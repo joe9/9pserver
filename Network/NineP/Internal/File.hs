@@ -47,7 +47,7 @@ boringStat = Stat 0 0 (Qid 0 0 0) 0o0777 0 0 0 "boring" "root" "root" "root"
 
 -- |A dumb file that can't do anything.
 boringFile :: (Monad m, EmbedIO m) => String -> NineFile m
-boringFile name = RegularFile
+boringFile name = def
         (\_ _ -> return "")
         (\_ _ -> return 0)
         (return ())

@@ -37,18 +37,19 @@ Library
     convertible >= 1.0.11.1 && < 1.2,
     exceptions >= 0.8.0.2 && < 0.9,
     monad-peel >= 0.1.1 && < 0.3,
-    hslogger >= 1.2.9 && < 1.3
+                hslogger >= 1.2.9 && < 1.3,
+                data-default
   Exposed-modules:
-    Control.Monad.EmbedIO
-    Network.NineP
-    Network.NineP.Error
-    Network.NineP.File
-    Network.NineP.File.Instances
-    Network.NineP.Server
+                  Control.Monad.EmbedIO
+                  Network.NineP
+                  Network.NineP.Error
+                  Network.NineP.File
+                  Network.NineP.File.Instances
+                  Network.NineP.Server
   Other-modules:
-    Network.NineP.Internal.File
-    Network.NineP.Internal.Msg
-    Network.NineP.Internal.State
+                Network.NineP.Internal.File
+                Network.NineP.Internal.Msg
+                Network.NineP.Internal.State
   ghc-options: -fno-warn-tabs
 
 Executable test

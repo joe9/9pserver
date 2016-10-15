@@ -74,7 +74,7 @@ rattach (Msg _ t (Tattach fid _ _ _)) = do
     root <- asks root
     insert fid root
     q <- makeQid root
-    return $ return $ Msg TRattach t $ Rattach q 
+    return $ return $ Msg TRattach t $ Rattach q
 
 desc :: (Monad m, EmbedIO m) => NineFile m -> String -> m (NineFile m)
 desc f ".." = do
@@ -110,7 +110,7 @@ getStat f = do
     s <- call $ stat f
     return s { st_mode = fixDirBit $ st_mode s,
         st_qid = (st_qid s) { qid_typ = getQidTyp s } }
-    
+
 rstat (Msg _ t (Tstat fid)) = do
     f <- lookup fid
     case f of
@@ -170,7 +170,7 @@ rread (Msg _ t (Tread fid offset count)) = do
             s <- mapM getStat $ contents
             let d = runPut $ mapM_ put s
             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
-        
+
 --rwrite :: Msg -> Nine m [Msg]
 rwrite (Msg _ t (Twrite fid offset d)) = do
     f <- lookup fid
