@@ -29,7 +29,7 @@ instance Show NineError where
     show (ENotImplemented s) = s ++ " is not implemented"
     show ENotADir = "not a directory"
     show EDir = "Is a directory"
-    show (ENoFile s) = "file not found"
+    show (ENoFile _) = "file not found"
     show (ENoFid i) = "fid " ++ show i ++ " is not registered on the server"
     show ENoAuthRequired = "the server doesn't require any kind of authentication"
     show EPermissionDenied = "permission denied"

@@ -1,71 +1,155 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Network.NineP.Internal.File
-    ( NineFile(..)
-    , boringFile
-    , boringDir
-    ) where
+module Network.NineP.Internal.File where
 
-import Control.Exception
-import Control.Monad.EmbedIO
 import qualified Data.ByteString.Lazy.Char8 as B
-import qualified Data.Map as M
-import Data.Word
+import           Data.Default
+import           Data.Text                  (Text)
+import           Data.Vector                (Vector)
+import           Data.Word
 
 import Data.NineP
 import Network.NineP.Error
 
-data NineFile m =
-    RegularFile {
-            read :: Word64    -- Offset
-            -> Word32 -- Length
-            -> m (B.ByteString),    -- Resulting data
-            write :: Word64    -- Offset
-            -> B.ByteString    -- The written data
-            -> m (Word32),    -- Number of bytes written successfully. Should return @0@ in case of an error.
-        remove :: m (),
-        stat :: m Stat,
-        wstat :: Stat -> m (),
-        version :: m Word32
-    } | Directory {
-        -- |A callback to get the list of the files this directory contains. Must not contain @.@ and @..@ entries.
-        getFiles :: m [NineFile m],
-        parent :: m (Maybe (NineFile m)),
-        -- |A callback to address a specific file by its name. @.@ and @..@ are handled in the library.
-        descend :: String -> m (NineFile m),
-        -- |Create a file under this directory.
-        create :: String -> Word32 -> m (NineFile m),
-        remove :: m (),
-        -- |The directory stat must return only stat for @.@.
-        stat :: m Stat,
-        wstat :: Stat -> m (),
-        version :: m Word32
+type Offset = Word64
+
+type Length = Word32
+
+type ResultingData = B.ByteString
+
+type WriteData = B.ByteString
+
+type Fid = Word32
+
+type AFid = Word32
+
+type NewFid = Word32
+
+type Permissions = Word32
+
+type Mode = Word8
+
+type UserName = Text
+
+type AccessName = Text
+
+data FileDetails s = FileDetails
+  { fOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
+  , fWalk :: NineError
+  , fRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
+  , fStat :: Stat
+  , fWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
+  , fClunk :: Fid -> s -> (Maybe NineError, s)
+  , fFlush :: s -> s
+  , fAttach :: Fid -> AFid -> UserName -> AccessName -> s -> (Either NineError Qid, s)
+  , fCreate :: Fid -> Text -> Permissions -> Mode -> s -> (Either NineError Qid, s)
+  , fRemove :: Fid -> s -> s
+  }
+
+instance Default (FileDetails s) where
+  def =
+    FileDetails
+    { fOpen = fileOpen
+    , fWalk = fileWalk
+    , fRead = fileRead
+    , fStat = nullStat
+    , fWrite = fileWrite
+    , fClunk = fileClunk
+    , fFlush = fileFlush
+    , fAttach = fileAttach
+    , fCreate = fileCreate
+    , fRemove = fileRemove
     }
 
-boringStat :: Stat
-boringStat = Stat 0 0 (Qid 0 0 0) 0o0777 0 0 0 "boring" "root" "root" "root"
+--         ,fFreefid = fileFreefid
+data DirDetails s = DirDetails
+  { dOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
+  , dWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)
+  , dRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
+  , dStat :: Stat
+  , dWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
+  , dClunk :: Fid -> s -> (Maybe NineError, s)
+  , dFlush :: s -> s
+  , dAttach :: Fid -> AFid -> UserName -> AccessName -> s -> (Either NineError Qid, s)
+  , dCreate :: Fid -> Text -> Permissions -> Mode -> s -> (Either NineError Qid, s)
+  , dRemove :: Fid -> s -> s
+  }
 
--- |A dumb file that can't do anything.
-boringFile :: (Monad m, EmbedIO m) => String -> NineFile m
-boringFile name = def
-        (\_ _ -> return "")
-        (\_ _ -> return 0)
-        (return ())
-        (return $ boringStat {st_name = name})
-        (const $ return ())
-    (return 0)
+instance Default (DirDetails s) where
+  def =
+    DirDetails
+    { dOpen = fileOpen
+    , dWalk = dirWalk
+    , dRead = fileRead
+    , dStat = nullStat
+    , dWrite = fileWrite
+    , dClunk = fileClunk
+    , dFlush = fileFlush
+    , dAttach = fileAttach
+    , dCreate = fileCreate
+    , dRemove = fileRemove
+    }
 
--- |A dumb directory that can't do anything but provide the files it contains. An user can create files, but they won't show up in listing and will essentially be 'boringFile's.
-boringDir :: (Monad m, EmbedIO m) => String -> [(String, NineFile m)] -> NineFile m
-boringDir name contents = let m = M.fromList contents in Directory {
-    getFiles = (return $ map snd $ contents),
-    descend = (\x -> case M.lookup x m of
-        Nothing -> throw $ ENoFile x
-        Just f -> return f),
-    create = (\name perms -> return $ boringFile name),
-    remove = (return ()),
-    stat = (return $ boringStat {st_name = name}),
-    wstat = (const $ return ()),
-    version = (return 0),
-    parent = return Nothing }
+type Version = Word32 -- s for context including user state
 
+data FSItem s
+  = File (FileDetails s)
+  | Dir (DirDetails s)
+        (Vector (FSItem s))
+  | Free
+
+fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
+fileOpen _ _ state = (Left (ENotImplemented "fileOpen"), state)
+
+fileWalk :: NineError
+fileWalk = ENotADir
+
+fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
+fileRead _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+
+fileWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
+fileWrite _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+
+fileClunk :: Fid -> s -> (Maybe NineError, s)
+fileClunk _ state = (Just (ENotImplemented "fileOpen"), state)
+
+fileFlush :: s -> s
+fileFlush state = state
+
+fileAttach :: Fid
+           -> AFid
+           -> UserName
+           -> AccessName
+           -> s
+           -> (Either NineError Qid, s)
+fileAttach _ _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+
+fileCreate :: Fid
+           -> Text
+           -> Permissions
+           -> Mode
+           -> s
+           -> (Either NineError Qid, s)
+fileCreate _ _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+
+fileRemove :: Fid -> s -> s
+fileRemove _ state = state
+
+nullStat :: Stat
+nullStat =
+  Stat
+  { st_typ = 0
+  , st_dev = 0
+  , st_qid = Qid 0 0 0
+  , st_mode = 0
+  , st_atime = 0
+  , st_mtime = 0
+  , st_length = 0
+  , st_name = ""
+  , st_uid = ""
+  , st_gid = ""
+  , st_muid = ""
+  }
+
+dirWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)
+dirWalk _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
