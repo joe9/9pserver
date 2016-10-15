@@ -1,37 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 module Network.NineP.Internal.File where
 
+import Protolude
 import qualified Data.ByteString.Lazy.Char8 as B
 import           Data.Default
 import           Data.Text                  (Text)
 import           Data.Vector                (Vector)
-import           Data.Word
 
 import Data.NineP
 import Network.NineP.Error
-
-type Offset = Word64
-
-type Length = Word32
-
-type ResultingData = B.ByteString
-
-type WriteData = B.ByteString
-
-type Fid = Word32
-
-type AFid = Word32
-
-type NewFid = Word32
-
-type Permissions = Word32
-
-type Mode = Word8
-
-type UserName = Text
-
-type AccessName = Text
+import Network.NineP.Internal.Types
 
 data FileDetails s = FileDetails
   { fOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
@@ -90,8 +70,6 @@ instance Default (DirDetails s) where
     , dRemove = fileRemove
     }
 
-type Version = Word32 -- s for context including user state
-
 data FSItem s
   = File (FileDetails s)
   | Dir (DirDetails s)
@@ -99,22 +77,22 @@ data FSItem s
   | Free
 
 fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
-fileOpen _ _ state = (Left (ENotImplemented "fileOpen"), state)
+fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
 
 fileWalk :: NineError
 fileWalk = ENotADir
 
 fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
-fileRead _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+fileRead _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 
 fileWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
-fileWrite _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 
 fileClunk :: Fid -> s -> (Maybe NineError, s)
-fileClunk _ state = (Just (ENotImplemented "fileOpen"), state)
+fileClunk _ context = (Just (ENotImplemented "fileOpen"), context)
 
 fileFlush :: s -> s
-fileFlush state = state
+fileFlush context = context
 
 fileAttach :: Fid
            -> AFid
@@ -122,7 +100,7 @@ fileAttach :: Fid
            -> AccessName
            -> s
            -> (Either NineError Qid, s)
-fileAttach _ _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+fileAttach _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 
 fileCreate :: Fid
            -> Text
@@ -130,10 +108,10 @@ fileCreate :: Fid
            -> Mode
            -> s
            -> (Either NineError Qid, s)
-fileCreate _ _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+fileCreate _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 
 fileRemove :: Fid -> s -> s
-fileRemove _ state = state
+fileRemove _ context = context
 
 nullStat :: Stat
 nullStat =
@@ -152,4 +130,4 @@ nullStat =
   }
 
 dirWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)
-dirWalk _ _ _ state = (Left (ENotImplemented "fileOpen"), state)
+dirWalk _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
