@@ -10,32 +10,36 @@ module Network.NineP.Error
     ( NineError(..)
     ) where
 
-import Protolude
+import Protolude hiding (concat)
 import Control.Exception
 import Data.Typeable
 import Data.Word
+import Data.ByteString
+import Data.Serialize
+import Data.String.Conversions
 
 data NineError =
-    ENotImplemented Text |
+    ENotImplemented ByteString |
     ENotADir |
     EDir |
-    ENoFile Text |
+    ENoFile ByteString |
     ENoFid Word32 |
     ENoAuthRequired |
     EPermissionDenied |
     EInval |
-    OtherError Text deriving (Typeable)
+    OtherError ByteString deriving (Typeable)
 
 -- instance Exception NineError
 
--- -- |See also: @linux\/net\/9p\/error.c@
--- instance Show NineError where
---     show (ENotImplemented s) = s ++ " is not implemented"
---     show ENotADir = "not a directory"
---     show EDir = "Is a directory"
---     show (ENoFile _) = "file not found"
---     show (ENoFid i) = "fid " ++ show i ++ " is not registered on the server"
---     show ENoAuthRequired = "the server doesn't require any kind of authentication"
---     show EPermissionDenied = "permission denied"
---     show EInval = "Invalid argument"
---     show (OtherError s) = s
+-- TODO rename this to nineErrorToByteString or show b or some such
+-- |See also: @linux\/net\/9p\/error.c@
+showNineError :: NineError -> ByteString
+showNineError (ENotImplemented s) = append s " is not implemented"
+showNineError ENotADir = "not a directory"
+showNineError EDir = "Is a directory"
+showNineError (ENoFile _) = "file not found"
+showNineError (ENoFid i) = concat [runPut (putWord32le i), " is not registered on the server"]
+showNineError ENoAuthRequired = "the server doesn't require any kind of authentication"
+showNineError EPermissionDenied = "permission denied"
+showNineError EInval = "Invalid argument"
+showNineError (OtherError s) = s

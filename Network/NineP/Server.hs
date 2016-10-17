@@ -10,129 +10,77 @@ module Network.NineP.Server
     , run9PServer
     ) where
 
-import Control.Concurrent
-import Control.Concurrent.MState hiding (get, put)
-import Control.Exception (assert)
-import Control.Monad
-import Control.Monad.Catch
-import Control.Monad.EmbedIO
-import Control.Monad.Loops
-import Control.Monad.Reader
-import Control.Monad.Trans
-import Data.Binary.Get
-import Data.Binary.Put
-import Data.Bits
+import Control.Exception.Safe
+import Data.String.Conversions
+import Data.Serialize
 import qualified Data.ByteString as BS
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as B
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Maybe
-import Data.NineP
+import Data.ByteString (ByteString)
 import Data.Word
-import Network hiding (accept)
-import Network.BSD
-import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import System.IO
-import System.Log.Logger
-import Text.Regex.Posix ((=~))
+import Data.String.Conversions
+import Network.Simple.TCP
+import Network.Socket               (socketToHandle)
+import System.IO                    (BufferMode (NoBuffering),
+                                     IOMode (ReadWriteMode), hClose,
+                                     hGetLine, hPutStrLn,
+                                     hSetBuffering, Handle)
+
+import Data.NineP
+import qualified Data.NineP.MessageTypes as MT
+import Data.NineP.MessageTypes (TransmitMessageType)
 
 import Network.NineP.Error
-import Network.NineP.Internal.File
-import Network.NineP.Internal.Msg
-import Network.NineP.Internal.State
-
-maybeRead :: Read a => String -> Maybe a
-maybeRead = fmap fst . listToMaybe . reads
-
-connection :: String -> IO Socket
-connection s = let    pat = "tcp!(.*)!([0-9]*)|unix!(.*)" :: ByteString
-                      wrongAddr = ioError $ userError $ "wrong 9p connection address: " ++ s
-                      (bef, _, aft, grps) = s =~ pat :: (String, String, String, [String])
-    in if (bef /= "" || aft /= "" || grps == [])
-        then wrongAddr
-        else case grps of
-            [addr, port, ""] -> listen' addr $ toEnum $ (fromMaybe 2358 $ maybeRead port :: Int)
-            ["", "", addr]  -> listenOn $ UnixSocket addr
-            _ -> wrongAddr
-
-listen' :: HostName -> PortNumber -> IO Socket
-listen' hostname port = do
-    proto <- getProtocolNumber "tcp"
-    bracketOnError (socket AF_INET Stream proto) Network.Socket.sClose (\sock -> do
-        setSocketOption sock ReuseAddr 1
-        he <- getHostByName hostname
-        bindSocket sock (SockAddrInet port (hostAddress he))
-        listen sock maxListenQueue
-        return sock)
+import Network.NineP.Internal.Context
+-- import Network.NineP.Internal.File
+-- import Network.NineP.Internal.Msg
+-- import Network.NineP.Internal.State
 
 -- |Run the actual server using the supplied configuration.
-run9PServer :: (EmbedIO m) => Config m -> IO ()
-run9PServer cfg = do
-    s <- connection $ addr cfg
-    serve s cfg
+run9PServer :: Context -> IO ()
+run9PServer context = do
+  serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
+    putStrLn $ "TCP connection established from " ++ show remoteAddr
+    -- Now you may use connectionSocket as you please within this scope,
+    -- possibly using recv and send to interact with the remote end.
+    bracket (socketToHandle connectionSocket ReadWriteMode)
+      hClose
+      (\handle -> hSetBuffering handle NoBuffering >> receiver handle context)
 
-serve :: (EmbedIO m) => Socket -> Config m -> IO ()
-serve s cfg = forever $ accept s >>= (
-        \(s, _) -> (doClient cfg) =<< (liftIO $ socketToHandle s ReadWriteMode))
+-- TODO Should I even send this when I do not have a tag?
+sendErrorMessage :: Handle -> String -> ByteString -> IO ()
+sendErrorMessage h s bs = BS.hPut h (toNinePFormat (Rerror (BS.concat [cs s, ": ", bs])) 0)
 
-doClient :: (EmbedIO m) => Config m -> Handle -> IO ()
-doClient cfg h = do
-    hSetBuffering h NoBuffering
-    chan <- (newChan :: IO (Chan Msg))
-    st <- forkIO $ sender (readChan chan) (BS.hPut h . BS.concat . B.toChunks) -- make a strict bytestring
-    receiver cfg h (writeChan chan)
-    killThread st
-    hClose h
+processMessage :: MT.TransmitMessageType -> Tag -> ByteString -> Context -> ( ByteString, Context)
+processMessage MT.Tversion tag msg = process rversion tag msg
+processMessage _ _ _ = undefined
 
-recvPacket :: Handle -> IO Msg
-recvPacket h = do
-    -- TODO error reporting
-    s <- B.hGet h 4
-    let l = fromIntegral $ runGet getWord32le $ assert (B.length s == 4) s
-    p <- B.hGet h $ l - 4
-    let m = runGet (get :: Get Msg) (B.append s p)
-    debugM "Network.NineP.Server" $ show m
-    return m
+-- process :: a -> Tag ->
+process f tag msg =
+  case runGet get msg of
+        Left e -> (toNinePFormat (rerror e),c)
+        Right d -> case f d of
+                    ( Left e,c) -> (toNinePFormat ( rerror e),c)
+                    ( Right m,c) ->  (toNinePFormat m,c)
 
-sender :: IO Msg -> (ByteString -> IO ()) -> IO ()
-sender get say = forever $ do
-    msg <- get
-    debugM "Network.NineP.Server" $ show msg
-    say $ runPut $ put msg
+-- validate if size < maximum size (Nothing about it in intro(5))??
+getMessageHeaders :: Get (TransmitMessageType, Tag)
+getMessageHeaders = do
+        msgType <- getWord8
+        tag <- getWord16le
+        return (MT.toTransmitMessageType msgType, tag)
 
-receiver :: (EmbedIO m) => Config m -> Handle -> (Msg -> IO ()) -> IO ()
-receiver cfg h say = runReaderT (runMState (iterateUntil id (do
-            mp <- liftIO $ try $ recvPacket h
-            case mp of
-                Left (e :: SomeException) -> do
-                    return $ putStrLn $ show e
-                    return True
-                Right p -> do
-                    forkM $ handleMsg say p
-                    return False
-        ) >> return ()
-    ) (emptyState $ monadState cfg)) cfg >> return ()
-
-handleMsg :: (EmbedIO m) => (Msg -> IO ()) -> Msg -> MState (NineState m) (ReaderT (Config m) IO) ()
-handleMsg say p = do
-    let Msg typ t m = p
-    r <- try (case typ of
-            TTversion -> rversion p
-            TTattach -> rattach p
-            TTwalk -> rwalk p
-            TTstat -> rstat p
-            TTwstat -> rwstat p
-            TTclunk -> rclunk p
-            TTauth -> rauth p
-            TTopen -> ropen p
-            TTread -> rread p
-            TTwrite -> rwrite p
-            TTremove -> rremove p
-            TTcreate -> rcreate p
-            TTflush -> rflush p
-        )
-    case r of
-        (Right response) -> liftIO $ mapM_ say $ response
-        -- FIXME which exceptions should i catch?
-        (Left fail) -> liftIO $ say $ Msg TRerror t $ Rerror $ show $ (fail :: SomeException)
+receiver :: Handle -> Context -> IO () -- Context
+receiver handle context = do
+  rawSize <- BS.hGet handle 4
+  case runGet getWord32le rawSize of
+    Left e -> sendErrorMessage handle e rawSize >> receiver handle context
+    Right wsize ->
+      let size = fromIntegral wsize
+      in if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
+            then receiver handle context
+            else do
+                message <- BS.hGet handle (size - 4)
+                case runGetState getMessageHeaders message (size - 4) of
+                    Left e -> sendErrorMessage handle e message >> receiver handle context
+                    Right ((msgType, tag), msgData) ->
+                        let (response, updatedContext) = processMessage msgType tag msgData context
+                        in BS.hPut handle response >> receiver handle updatedContext

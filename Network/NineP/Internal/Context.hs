@@ -9,14 +9,21 @@ import           Data.Vector        (Vector)
 import qualified Data.Vector        as V
 import           Prelude            hiding (lookup)
 import           Protolude
+import           TextShow
+
+import Data.NineP
 
 import Network.NineP.Error
 import Network.NineP.Internal.File
-import Network.NineP.Internal.Types
 
 data NineVersion
   = VerUnknown
   | Ver9P2000
+  deriving (Eq)
+
+instance TextShow NineVersion where
+  showb VerUnknown = "unknown"
+  showb Ver9P2000  = "9P2000"
 
 validateNineVersion :: Text -> NineVersion
 validateNineVersion s =
@@ -104,3 +111,6 @@ data Context = Context
 -- TODO : Add to FileSystem
 initializeContext :: Context
 initializeContext = Context IntMap.empty V.empty
+
+resetContext :: Context -> Context
+resetContext c = Context IntMap.empty (cQids c)

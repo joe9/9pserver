@@ -11,7 +11,6 @@ import           Data.Vector                (Vector)
 
 import Data.NineP
 import Network.NineP.Error
-import Network.NineP.Internal.Types
 
 data FileDetails s = FileDetails
   { fOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
@@ -24,6 +23,7 @@ data FileDetails s = FileDetails
   , fAttach :: Fid -> AFid -> UserName -> AccessName -> s -> (Either NineError Qid, s)
   , fCreate :: Fid -> Text -> Permissions -> Mode -> s -> (Either NineError Qid, s)
   , fRemove :: Fid -> s -> s
+  , fVersion :: Word32
   }
 
 instance Default (FileDetails s) where
@@ -39,6 +39,7 @@ instance Default (FileDetails s) where
     , fAttach = fileAttach
     , fCreate = fileCreate
     , fRemove = fileRemove
+  , fVersion = 0
     }
 
 --         ,fFreefid = fileFreefid
@@ -53,6 +54,7 @@ data DirDetails s = DirDetails
   , dAttach :: Fid -> AFid -> UserName -> AccessName -> s -> (Either NineError Qid, s)
   , dCreate :: Fid -> Text -> Permissions -> Mode -> s -> (Either NineError Qid, s)
   , dRemove :: Fid -> s -> s
+  , dVersion :: Word32
   }
 
 instance Default (DirDetails s) where
@@ -68,6 +70,7 @@ instance Default (DirDetails s) where
     , dAttach = fileAttach
     , dCreate = fileCreate
     , dRemove = fileRemove
+  , dVersion = 0
     }
 
 data FSItem s
@@ -116,17 +119,17 @@ fileRemove _ context = context
 nullStat :: Stat
 nullStat =
   Stat
-  { st_typ = 0
-  , st_dev = 0
-  , st_qid = Qid 0 0 0
-  , st_mode = 0
-  , st_atime = 0
-  , st_mtime = 0
-  , st_length = 0
-  , st_name = ""
-  , st_uid = ""
-  , st_gid = ""
-  , st_muid = ""
+  { stTyp = 0
+  , stDev = 0
+  , stQid = Qid [] 0 0
+  , stMode = 0
+  , stAtime = 0
+  , stMtime = 0
+  , stLength = 0
+  , stName = ""
+  , stUid = ""
+  , stGid = ""
+  , stMuid = ""
   }
 
 dirWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)

@@ -43,6 +43,10 @@ Library
                 text,
                 text-show,
                 protolude,
+                string-conversions,
+                cereal,
+                safe-exceptions,
+                network-simple,
                 data-default
   Exposed-modules:
 --                   Network.NineP

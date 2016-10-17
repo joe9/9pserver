@@ -9,18 +9,22 @@ import Data.NineP
 import Data.Maybe
 import Data.Word
 import qualified Data.Text as T
+import           TextShow
 
 import Network.NineP.Error
 import Network.NineP.Internal.File
 import Network.NineP.Internal.Context
 
 -- Not bothering with T.chunksOf on size.
+-- assuming that the length of bytestring will be the same as that of
+-- Text for calculating msize using T.length
 version :: Tversion -> Context -> (Rversion, Context)
-version (Tversion size rversion) context = undefined
---   let protoVersion = validateNineVersion rversion
---   in if protoVersion == VerUnknown
---         then (Rversion (length protoVersion) protoVersion,context)
---         else (Rversion (length protoVersion) protoVersion,initializeContext context)
+version (Tversion _ rversion) context =
+  let protoVersion = validateNineVersion rversion
+      updatedContext = if protoVersion == VerUnknown
+                       then context
+                       else resetContext context
+  in (Rversion ((fromIntegral . T.length . showt) protoVersion) (showt protoVersion), updatedContext)
 
 -- checkPerms :: (Monad m, EmbedIO m) => NineFile m -> Word8 -> Nine m ()
 -- checkPerms f want = do
@@ -51,6 +55,23 @@ version (Tversion size rversion) context = undefined
 -- makeQid x = do
 --     s <- getStat x
 --     return $ Qid (getQidTyp s) 0 42
+
+qid :: Int -> FSItem Context -> Either NineError Qid
+qid _ Free = Left EInval
+qid i ( Dir d _) = Right (Qid QTDir ( dVersion d) i)
+qid i ( Dir d _) = Right (Qid QTDir ( dVersion d) i)
+
+attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
+attach (Tattach fid _ _ _) c = do
+  -- 0 == root directory path == index in cQids
+  case qid 0 of
+    either (Rerror . showt)
+    l@(Left _) =
+  ( , c {cFids = IntMap.insert fid 0 (cFids c)})
+    root <- asks root
+    insert fid root
+    q <- makeQid root
+    return $ return $ Msg TRattach t $ Rattach q
 
 -- rattach (Msg _ t (Tattach fid _ _ _)) = do
 --     root <- asks root
