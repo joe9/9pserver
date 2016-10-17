@@ -100,6 +100,54 @@ remove (Tremove fid) c =
                  , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
                  })
 
+-- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
+-- getStat f = do
+--     let fixDirBit = (case f of
+--                 (RegularFile {}) -> flip clearBit 31
+--                 (Directory {}) -> flip setBit 31
+--             )
+--     s <- call $ stat f
+--     return s { st_mode = fixDirBit $ st_mode s,
+--         st_qid = (st_qid s) { qid_typ = getQidTyp s } }
+-- rstat (Msg _ t (Tstat fid)) = do
+--     f <- lookup fid
+--     case f of
+--         RegularFile {} -> do
+--             s <- getStat f
+--             return $ return $ Msg TRstat t $ Rstat $ [s]
+--         Directory {} -> do
+--             mys <- getStat f
+--             return $ return $ Msg TRstat t $ Rstat $ return $ mys
+-- rwstat (Msg _ t (Twstat fid stat)) = do
+--     -- TODO check perms
+--     f <- lookup fid
+--     -- TODO implement
+--     return $ return $ Msg TRwstat t $ Rwstat
+
+stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+stat (Tstat fid) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)
+    Just i -> (Right Rstat
+             , c { cFids = HashMap.delete fid (cFids c)
+                 , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
+                 })
+
+-- walk :: (Monad m, EmbedIO m) => [Qid] -> [String] -> NineFile m -> Nine m (NineFile m, [Qid])
+-- walk qs [] f = return (f, qs)
+-- walk qs (x:xs) (RegularFile {}) = throw ENotADir
+-- walk qs (x:xs) d@(Directory {}) = do
+--     f <- call $ desc d x
+--     q <- makeQid f
+--     walk (q:qs) xs f
+-- walk' :: (Monad m, EmbedIO m) => [String] -> NineFile m -> Nine m (NineFile m, [Qid])
+-- walk' = walk []
+-- rwalk (Msg _ t (Twalk fid newfid path)) = do
+--     f <- lookup fid
+--     (nf, qs) <- walk' path f
+--     insert newfid nf
+--     return $ return $ Msg TRwalk t $ Rwalk $ qs
+
 -- open :: (Monad m, EmbedIO m) => NineFile m -> Nine m Qid
 -- open f = do
 --     makeQid $ f
@@ -128,38 +176,6 @@ remove (Tremove fid) c =
 --         Just p -> p
 --         Nothing -> f
 -- desc f s = descend f s
--- walk :: (Monad m, EmbedIO m) => [Qid] -> [String] -> NineFile m -> Nine m (NineFile m, [Qid])
--- walk qs [] f = return (f, qs)
--- walk qs (x:xs) (RegularFile {}) = throw ENotADir
--- walk qs (x:xs) d@(Directory {}) = do
---     f <- call $ desc d x
---     q <- makeQid f
---     walk (q:qs) xs f
--- walk' :: (Monad m, EmbedIO m) => [String] -> NineFile m -> Nine m (NineFile m, [Qid])
--- walk' = walk []
--- rwalk (Msg _ t (Twalk fid newfid path)) = do
---     f <- lookup fid
---     (nf, qs) <- walk' path f
---     insert newfid nf
---     return $ return $ Msg TRwalk t $ Rwalk $ qs
--- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
--- getStat f = do
---     let fixDirBit = (case f of
---                 (RegularFile {}) -> flip clearBit 31
---                 (Directory {}) -> flip setBit 31
---             )
---     s <- call $ stat f
---     return s { st_mode = fixDirBit $ st_mode s,
---         st_qid = (st_qid s) { qid_typ = getQidTyp s } }
--- rstat (Msg _ t (Tstat fid)) = do
---     f <- lookup fid
---     case f of
---         RegularFile {} -> do
---             s <- getStat f
---             return $ return $ Msg TRstat t $ Rstat $ [s]
---         Directory {} -> do
---             mys <- getStat f
---             return $ return $ Msg TRstat t $ Rstat $ return $ mys
 -- rauth (Msg {}) = do
 --     throw ENoAuthRequired
 -- rread :: (Monad m, EmbedIO m) => Msg -> Nine m [Msg]
@@ -190,8 +206,3 @@ remove (Tremove fid) c =
 --         RegularFile {} -> do
 --             c <- call $ (write f) offset d
 --             return $ return $ Msg TRwrite t $ Rwrite c
--- rwstat (Msg _ t (Twstat fid stat)) = do
---     -- TODO check perms
---     f <- lookup fid
---     -- TODO implement
---     return $ return $ Msg TRwstat t $ Rwstat
