@@ -8,6 +8,7 @@
 
 module Network.NineP.Error
     ( NineError(..)
+    , showNineError
     ) where
 
 import Protolude hiding (concat)

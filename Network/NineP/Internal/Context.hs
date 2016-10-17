@@ -3,7 +3,7 @@
 
 module Network.NineP.Internal.Context where
 
-import           Data.IntMap.Strict as IntMap
+import           Data.HashMap.Strict as HashMap
 import qualified Data.Text          as T
 import           Data.Vector        (Vector)
 import qualified Data.Vector        as V
@@ -11,6 +11,8 @@ import           Prelude            hiding (lookup)
 import           Protolude
 import           TextShow
 
+import qualified Data.ByteString as BS
+import Protolude
 import Data.NineP
 
 import Network.NineP.Error
@@ -21,13 +23,13 @@ data NineVersion
   | Ver9P2000
   deriving (Eq)
 
-instance TextShow NineVersion where
-  showb VerUnknown = "unknown"
-  showb Ver9P2000  = "9P2000"
+showNineVersion :: NineVersion -> ByteString
+showNineVersion Ver9P2000 = "9P2000"
+showNineVersion VerUnknown = "unknown"
 
-validateNineVersion :: Text -> NineVersion
+validateNineVersion :: ByteString -> NineVersion
 validateNineVersion s =
-  if T.isPrefixOf "9P2000" s
+  if BS.isPrefixOf "9P2000" s
     then Ver9P2000
     else VerUnknown
 
@@ -102,15 +104,16 @@ validateNineVersion s =
 type QidsIndex = Int
 
 data Context = Context
-  { cFids :: IntMap.IntMap QidsIndex
+  { cFids :: HashMap.HashMap Fid QidsIndex
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
   , cQids :: Vector (FSItem Context)
+  , cMaxMessageSize :: Int
   }
 
 -- TODO : Add to FileSystem
 initializeContext :: Context
-initializeContext = Context IntMap.empty V.empty
+initializeContext = Context HashMap.empty V.empty 8196
 
 resetContext :: Context -> Context
-resetContext c = Context IntMap.empty (cQids c)
+resetContext c = c{cFids = HashMap.empty}
