@@ -7,13 +7,14 @@ import           Data.HashMap.Strict as HashMap
 import qualified Data.Text          as T
 import           Data.Vector        (Vector)
 import qualified Data.Vector        as V
-import           Prelude            hiding (lookup)
+import qualified  Data.Vector.Mutable as DVM
 import           Protolude
 import           TextShow
 
 import qualified Data.ByteString as BS
 import Protolude
-import Data.NineP
+import Data.NineP hiding (Directory)
+import qualified Data.NineP as NineP
 
 import Network.NineP.Error
 import Network.NineP.Internal.File
@@ -117,3 +118,124 @@ initializeContext = Context HashMap.empty V.empty 8196
 
 resetContext :: Context -> Context
 resetContext c = c{cFids = HashMap.empty}
+
+-- fileDetails
+--   =
+--     Details
+--     { dOpen = fileOpen
+--     , dWalk = undefined -- fileWalk
+--     , dRead = fileRead
+--     , dStat = nullStat
+--     , dWrite = fileWrite
+--     , dClunk = fileClunk
+--     , dFlush = fileFlush
+--     , dAttach = fileAttach
+--     , dCreate = fileCreate
+--     , dRemove = fileRemove
+--     , dVersion = 0
+--     }
+
+-- --         ,fFreefid = fileFreefid
+-- dirDetails =
+--     Details
+--     { dOpen = fileOpen
+--     , dWalk = dirWalk
+--     , dRead = fileRead
+--     , dStat = nullStat
+--     , dWrite = fileWrite
+--     , dClunk = fileClunk
+--     , dFlush = fileFlush
+--     , dAttach = fileAttach
+--     , dCreate = fileCreate
+--     , dRemove = fileRemove
+--   , dVersion = 0
+--     }
+
+-- -- TODO below functions
+-- noneDetails =
+--     Details
+--     { dOpen = fileOpen
+--     , dWalk = dirWalk
+--     , dRead = fileRead
+--     , dStat = nullStat
+--     , dWrite = fileWrite
+--     , dClunk = fileClunk
+--     , dFlush = fileFlush
+--     , dAttach = fileAttach
+--     , dCreate = fileCreate
+--     , dRemove = fileRemove
+--   , dVersion = 0
+--     }
+
+none :: FSItem Context
+none = undefined
+
+-- fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
+-- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
+-- fileWalk :: NineError
+-- fileWalk = ENotADir
+
+-- fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
+-- fileRead _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
+-- fileWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
+-- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
+fdClunk :: Fid -> FSItem Context -> Context -> (Maybe NineError, Context)
+fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
+
+-- fileFlush :: s -> s
+-- fileFlush context = context
+
+fileAttach :: Fid
+           -> AFid
+           -> UserName
+           -> AccessName
+           -> s
+           -> (Either NineError Qid, s)
+fileAttach _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
+dirAttach :: Fid
+           -> AFid
+           -> UserName
+           -> AccessName
+           -> Int
+           -> FSItem Context
+           -> Context
+           -> (Either NineError Qid, Context)
+dirAttach fid afid username accessname i d c =
+    ( Right (Qid [NineP.Directory] (( dVersion . fDetails) d) (fromIntegral i))
+    , c {cFids = HashMap.insert fid 0 (cFids c)})
+
+-- fileCreate :: Fid
+--            -> Text
+--            -> Permissions
+--            -> Mode
+--            -> s
+--            -> (Either NineError Qid, s)
+-- fileCreate _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
+-- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
+fileRemove :: Fid -> Int -> FSItem Context -> Context -> (Maybe NineError, Context)
+fileRemove fid index _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)
+                                       , cQids = V.modify (\v -> DVM.write v index none) (cQids c)})
+
+-- nullStat :: Stat
+-- nullStat =
+--   Stat
+--   { stTyp = 0
+--   , stDev = 0
+--   , stQid = Qid [] 0 0
+--   , stMode = 0
+--   , stAtime = 0
+--   , stMtime = 0
+--   , stLength = 0
+--   , stName = ""
+--   , stUid = ""
+--   , stGid = ""
+--   , stMuid = ""
+--   }
+
+-- dirWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)
+-- dirWalk _ _ _ context = (Left (ENotImplemented "fileOpen"), context)

@@ -92,7 +92,7 @@ attach (Tattach fid afid uname aname) c =
   -- validate fid
   maybe (rerror EInval, c) f ((cQids c) V.!? 0)
   where f d = runEitherFunction
-                 (((dAttach . fDetails) d) fid afid uname aname d c)
+                 (((dAttach . fDetails) d) fid afid uname aname 0 d c)
                  Rattach
 
 -- qid :: Vector (FSItem Context) -> Int -> Either NineError Qid
@@ -122,9 +122,6 @@ clunk (Tclunk fid) c =
                  (((dClunk . fDetails) d) fid d c)
                  Rclunk
 
--- clunk (Tclunk fid) c =
---   (Right Rclunk, c {cFids = HashMap.delete fid (cFids c)})
-
 flush :: Tflush -> Context -> (Either Rerror Rflush, Context)
 flush (Tflush _) c = (Right Rflush, c)
 
@@ -136,13 +133,8 @@ remove (Tremove fid) c =
     Just i ->
         maybe (rerror EInval, c) f ((cQids c) V.!? i)
         where f d = runMaybeFunction
-                        (((dRemove . fDetails) d) fid d c)
+                        (((dRemove . fDetails) d) fid i d c)
                         Rremove
-
---     Just i -> (Right Rremove
---              , c { cFids = HashMap.delete fid (cFids c)
---                  , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
---                  })
 
 -- open :: (Monad m, EmbedIO m) => NineFile m -> Nine m Qid
 -- open f = do
