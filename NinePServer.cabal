@@ -1,0 +1,52 @@
+Name:                NinePServer
+Version:             0.4.1
+Description:         A library providing one with a somewhat higher level interface to 9P2000 protocol than existing implementations. Designed to facilitate rapid development of synthetic filesystems.
+Synopsis:            High-level abstraction over 9P protocol
+Maintainer:          Sergey Alirzaev <zl29ah@gmail.com>
+License:             OtherLicense
+Category:            Network
+License-file:        LICENSE
+Build-Type:          Simple
+Cabal-Version:       >= 1.6
+Stability:           Experimental
+Tested-With:         GHC == 8.0.1
+
+Source-repository head
+  type:              git
+  location:          https://github.com/l29ah/Network-NineP.git
+
+Source-repository this
+  type:              git
+  location:          https://github.com/l29ah/Network-NineP.git
+  tag:               0.4.1
+
+Library
+  other-extensions: NoImplicitPrelude, OverloadedStrings
+  Build-Depends:
+                base
+              , bytestring
+              , containers
+              , unordered-containers
+              , network
+              , vector
+              , text
+              , text-show
+              , protolude
+              , string-conversions
+              , cereal
+              , safe-exceptions
+              , network-simple
+              , data-default
+              , NineP
+  Exposed-modules:
+                  Network.NineP
+  Other-modules:
+                Network.NineP.Error
+                Network.NineP.Server
+                Network.NineP.Context
+                Network.NineP.File
+                Network.NineP.Response
+
+-- Executable test
+--   Main-is: Test.hs
+--   ghc-options: -fno-warn-tabs

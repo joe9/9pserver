@@ -31,8 +31,8 @@ import           Data.NineP.MessageTypes (TransmitMessageType)
 import qualified Data.NineP.MessageTypes as MT
 
 -- import Network.NineP.Error
-import Network.NineP.Internal.Context
-import Network.NineP.Internal.Response
+import Network.NineP.Context
+import Network.NineP.Response
 
 -- |Run the actual server using the supplied configuration.
 -- TODO move the below socket stuff to the Context
