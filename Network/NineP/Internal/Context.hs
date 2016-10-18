@@ -4,17 +4,17 @@
 module Network.NineP.Internal.Context where
 
 import           Data.HashMap.Strict as HashMap
-import qualified Data.Text          as T
-import           Data.Vector        (Vector)
-import qualified Data.Vector        as V
-import qualified  Data.Vector.Mutable as DVM
+import qualified Data.Text           as T
+import           Data.Vector         (Vector)
+import qualified Data.Vector         as V
+import qualified Data.Vector.Mutable as DVM
 import           Protolude
 import           TextShow
 
 import qualified Data.ByteString as BS
-import Protolude
-import Data.NineP hiding (Directory)
-import qualified Data.NineP as NineP
+import           Data.NineP      hiding (Directory)
+import qualified Data.NineP      as NineP
+import           Protolude
 
 import Network.NineP.Error
 import Network.NineP.Internal.File
@@ -25,7 +25,7 @@ data NineVersion
   deriving (Eq)
 
 showNineVersion :: NineVersion -> ByteString
-showNineVersion Ver9P2000 = "9P2000"
+showNineVersion Ver9P2000  = "9P2000"
 showNineVersion VerUnknown = "unknown"
 
 validateNineVersion :: ByteString -> NineVersion
@@ -105,10 +105,10 @@ validateNineVersion s =
 type QidsIndex = Int
 
 data Context = Context
-  { cFids :: HashMap.HashMap Fid QidsIndex
+  { cFids           :: HashMap.HashMap Fid QidsIndex
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
-  , cQids :: Vector (FSItem Context)
+  , cQids           :: Vector (FSItem Context)
   , cMaxMessageSize :: Int
   }
 
@@ -117,125 +117,218 @@ initializeContext :: Context
 initializeContext = Context HashMap.empty V.empty 8196
 
 resetContext :: Context -> Context
-resetContext c = c{cFids = HashMap.empty}
+resetContext c = c {cFids = HashMap.empty}
 
--- fileDetails
---   =
---     Details
---     { dOpen = fileOpen
---     , dWalk = undefined -- fileWalk
---     , dRead = fileRead
---     , dStat = nullStat
---     , dWrite = fileWrite
---     , dClunk = fileClunk
---     , dFlush = fileFlush
---     , dAttach = fileAttach
---     , dCreate = fileCreate
---     , dRemove = fileRemove
---     , dVersion = 0
---     }
+fileDetails, dirDetails, noneDetails  :: Details Context
+fileDetails =
+  Details
+  { dOpen = fileOpen
+  , dWalk = undefined -- fileWalk
+  , dRead = undefined
+  , dStat = nullStat
+  , dReadStat = readStat
+  , dWriteStat = writeStat
+  , dWrite = undefined
+  , dClunk = fdClunk
+  , dFlush = undefined
+  , dAttach = undefined
+  , dCreate = fdCreate
+  , dRemove = fileRemove
+  , dVersion = 0
+  }
 
--- --         ,fFreefid = fileFreefid
--- dirDetails =
---     Details
---     { dOpen = fileOpen
---     , dWalk = dirWalk
---     , dRead = fileRead
---     , dStat = nullStat
---     , dWrite = fileWrite
---     , dClunk = fileClunk
---     , dFlush = fileFlush
---     , dAttach = fileAttach
---     , dCreate = fileCreate
---     , dRemove = fileRemove
---   , dVersion = 0
---     }
+dirDetails =
+  Details
+  { dOpen = dirOpen
+  , dWalk = dirWalk
+  , dRead = undefined
+  , dStat = nullStat
+  , dReadStat = readStat
+  , dWriteStat = writeStat
+  , dWrite = undefined
+  , dClunk = fdClunk
+  , dFlush = undefined
+  , dAttach = dirAttach
+  , dCreate = fdCreate
+  , dRemove = undefined
+  , dVersion = 0
+  }
 
--- -- TODO below functions
--- noneDetails =
---     Details
---     { dOpen = fileOpen
---     , dWalk = dirWalk
---     , dRead = fileRead
---     , dStat = nullStat
---     , dWrite = fileWrite
---     , dClunk = fileClunk
---     , dFlush = fileFlush
---     , dAttach = fileAttach
---     , dCreate = fileCreate
---     , dRemove = fileRemove
---   , dVersion = 0
---     }
+-- TODO change all the undefineds to return the old context and a
+  -- NineError message
+noneDetails =
+  Details
+  { dOpen = undefined
+  , dWalk = undefined
+  , dRead = undefined
+  , dStat = undefined
+  , dReadStat = undefined
+  , dWriteStat = undefined
+  , dWrite = undefined
+  , dClunk = undefined
+  , dFlush = undefined
+  , dAttach = undefined
+  , dCreate = undefined
+  , dRemove = undefined
+  , dVersion = 0
+  }
 
 none :: FSItem Context
-none = undefined
+none = FSItem None noneDetails Nothing
 
 -- fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
-
 -- fileWalk :: NineError
 -- fileWalk = ENotADir
-
 -- fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
 -- fileRead _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-
 -- fileWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-
 fdClunk :: Fid -> FSItem Context -> Context -> (Maybe NineError, Context)
 fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
 -- fileFlush :: s -> s
 -- fileFlush context = context
+dirAttach
+  :: Fid
+  -> AFid
+  -> UserName
+  -> AccessName
+  -> Int
+  -> FSItem Context
+  -> Context
+  -> (Either NineError Qid, Context)
+dirAttach fid afid username accessname i d c =
+  ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
+  , c {cFids = HashMap.insert fid 0 (cFids c)})
 
-fileAttach :: Fid
-           -> AFid
-           -> UserName
-           -> AccessName
-           -> s
-           -> (Either NineError Qid, s)
-fileAttach _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+fdCreate
+  :: Fid
+  -> ByteString
+  -> Permissions
+  -> Mode
+  -> FSItem Context
+  -> Context
+  -> (Either NineError (Qid, IOUnit), Context)
+fdCreate _ _ _ _ _ context = (Left (ENotImplemented "fileCreate"), context)
 
-dirAttach :: Fid
-           -> AFid
-           -> UserName
-           -> AccessName
+-- TODO check for permissions, etc
+fileOpen
+  :: Fid
+  -> Mode
+  -> IndexInQids
+  -> FSItem Context
+  -> Context
+  -> (Either NineError (Qid, IOUnit), Context)
+fileOpen fid mode i me c =
+  let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
+  in ( Right
+         (Qid [NineP.File] ((dVersion . fDetails) me) (fromIntegral i), iounit)
+     , c {cFids = HashMap.insert fid i (cFids c)})
+
+-- TODO check for permissions, etc
+dirOpen
+  :: Fid
+  -> Mode
+  -> IndexInQids
+  -> FSItem Context
+  -> Context
+  -> (Either NineError (Qid, IOUnit), Context)
+dirOpen fid mode i me c =
+  let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
+  in ( Right
+         ( Qid [NineP.Directory] ((dVersion . fDetails) me) (fromIntegral i)
+         , iounit)
+     , c {cFids = HashMap.insert fid i (cFids c)})
+
+-- TODO check for permissions, iounit details, etc
+fileRead
+  :: Fid
+  -> Offset
+  -> Length
+  -> IndexInQids
+  -> FSItem Context
+  -> Context
+  -> (Either NineError ByteString, Context)
+fileRead fid offset len i me c = undefined
+
+-- TODO check for permissions, iounit details, etc
+dirRead
+  :: Fid
+  -> Offset
+  -> Length
+  -> IndexInQids
+  -> FSItem Context
+  -> Context
+  -> (Either NineError ByteString, Context)
+dirRead fid offset len i me c = undefined
+
+-- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
+fileRemove :: Fid
            -> Int
            -> FSItem Context
            -> Context
-           -> (Either NineError Qid, Context)
-dirAttach fid afid username accessname i d c =
-    ( Right (Qid [NineP.Directory] (( dVersion . fDetails) d) (fromIntegral i))
-    , c {cFids = HashMap.insert fid 0 (cFids c)})
+           -> (Maybe NineError, Context)
+fileRemove fid index _ c =
+  ( Nothing
+  , c
+    { cFids = HashMap.delete fid (cFids c)
+    , cQids = V.modify (\v -> DVM.write v index none) (cQids c)
+    })
 
--- fileCreate :: Fid
---            -> Text
---            -> Permissions
---            -> Mode
---            -> s
---            -> (Either NineError Qid, s)
--- fileCreate _ _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
+readStat _ me context = ((Right . dStat . fDetails) me, context)
 
--- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
-fileRemove :: Fid -> Int -> FSItem Context -> Context -> (Maybe NineError, Context)
-fileRemove fid index _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)
-                                       , cQids = V.modify (\v -> DVM.write v index none) (cQids c)})
+-- TODO check permissions when doing this
+-- TODO allow more changes to stat as per the spec
+writeStat :: Fid
+          -> Stat
+          -> Int
+          -> FSItem Context
+          -> Context
+          -> (Maybe NineError, Context)
+writeStat fid stat index me c =
+  let oldstat = (dStat . fDetails) me
+      updatedStat =
+        oldstat
+        -- stTyp    = !Word16
+        -- , stDev    = !Word32
+        -- , stQid    = stQid stat
+        -- , stMode   = stMode stat
+        --                         , stAtime  = !Word32
+        { stMtime = stMtime stat
+          --                         , stLength = !Word64
+          --                         , stName   = !ByteString
+          --                         , stUid    = !ByteString
+          --                         , stGid    = !ByteString
+          --                         , stMuid   = !ByteString
+        }
+      newFSItem = me {fDetails = (fDetails me) {dStat = updatedStat}}
+      updatedContext =
+        c {cQids = V.modify (\v -> DVM.write v index newFSItem) (cQids c)}
+  in (Nothing, updatedContext)
 
--- nullStat :: Stat
--- nullStat =
---   Stat
---   { stTyp = 0
---   , stDev = 0
---   , stQid = Qid [] 0 0
---   , stMode = 0
---   , stAtime = 0
---   , stMtime = 0
---   , stLength = 0
---   , stName = ""
---   , stUid = ""
---   , stGid = ""
---   , stMuid = ""
---   }
+nullStat :: Stat
+nullStat =
+  Stat
+  { stTyp = 0
+  , stDev = 0
+  , stQid = Qid [] 0 0
+  , stMode = 0
+  , stAtime = 0
+  , stMtime = 0
+  , stLength = 0
+  , stName = ""
+  , stUid = ""
+  , stGid = ""
+  , stMuid = ""
+  }
 
--- dirWalk :: Fid -> NewFid -> [Text] -> s -> (Either NineError [Qid], s)
--- dirWalk _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+dirWalk
+  :: Fid
+  -> NewFid
+  -> [Text]
+  -> FSItem Context
+  -> Context
+  -> (Either NineError [Qid], Context)
+dirWalk _ _ _ _ context = (Left (ENotImplemented "walk"), context)

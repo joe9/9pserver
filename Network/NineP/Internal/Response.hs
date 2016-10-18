@@ -153,7 +153,7 @@ open (Topen fid mode) c =
     Just i ->
         maybe (rerror EInval, c) f ((cQids c) V.!? i)
         where f d = runEitherFunction
-                        (((dOpen . fDetails) d) fid mode d c)
+                        (((dOpen . fDetails) d) fid mode i d c)
                         (\(a,b) -> Ropen a b)
 
 create :: Tcreate -> Context -> (Either Rerror Rcreate, Context)
@@ -193,7 +193,7 @@ read (Tread fid offset count) c =
     Just i ->
         maybe (rerror EInval, c) f ((cQids c) V.!? i)
         where f d = runEitherFunction
-                        (((dRead . fDetails) d) fid offset count d c)
+                        (((dRead . fDetails) d) fid offset count i d c)
                         Rread
 
 write :: Twrite -> Context -> (Either Rerror Rwrite, Context)
@@ -203,7 +203,7 @@ write (Twrite fid offset count) c =
     Just i ->
         maybe (rerror EInval, c) f ((cQids c) V.!? i)
         where f d = runEitherFunction
-                        (((dWrite . fDetails) d) fid offset count d c)
+                        (((dWrite . fDetails) d) fid offset count i d c)
                         Rwrite
 
 stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
@@ -223,7 +223,7 @@ wstat (Twstat fid stat) c =
     Just i ->
         maybe (rerror EInval, c) f ((cQids c) V.!? i)
         where f d = runMaybeFunction
-                        (((dWriteStat . fDetails) d) fid stat d c)
+                        (((dWriteStat . fDetails) d) fid stat i d c)
                         Rwstat
 
 walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)
