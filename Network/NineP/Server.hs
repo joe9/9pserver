@@ -1,3 +1,6 @@
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -- |
 -- Stability   :  Ultra-Violence
 -- Portability :  I'm too young to die
@@ -11,6 +14,7 @@ module Network.NineP.Server
 
 import           Control.Exception.Safe  hiding (handle)
 import           Data.ByteString         (ByteString)
+import           Protolude hiding (bracket, get)
 import qualified Data.ByteString         as BS
 import           Data.Serialize hiding (flush)
 import           Data.String.Conversions
@@ -44,7 +48,7 @@ run9PServer context = do
       (\handle -> hSetBuffering handle NoBuffering >> receiver handle context)
 
 -- TODO Should I even send this when I do not have a tag?
-sendErrorMessage :: Handle -> String -> ByteString -> IO ()
+sendErrorMessage :: Handle -> ByteString -> ByteString -> IO ()
 sendErrorMessage h s bs =
   BS.hPut h (toNinePFormat (Rerror (BS.concat [cs s, ": ", bs])) 0)
 
@@ -53,12 +57,19 @@ processMessage :: MT.TransmitMessageType
                -> ByteString
                -> Context
                -> (ByteString, Context)
-processMessage MT.Tversion tag msg context = process version tag msg context
-processMessage MT.Tattach tag msg context = process attach tag msg context
-processMessage MT.Tclunk tag msg context = process clunk tag msg context
-processMessage MT.Tflush tag msg context = process flush tag msg context
-processMessage MT.Tremove tag msg context = process remove tag msg context
-processMessage _ _ _ _ = undefined
+processMessage MT.Tversion = process version
+processMessage MT.Tattach = process attach
+processMessage MT.Tclunk = process clunk
+processMessage MT.Tflush = process flush
+processMessage MT.Tremove = process remove
+processMessage MT.Topen = process open
+processMessage MT.Tcreate = process create
+processMessage MT.Tread = process read
+processMessage MT.Twrite = process write
+processMessage MT.Tstat = process stat
+processMessage MT.Twstat = process wstat
+processMessage MT.Twalk = process walk
+-- processMessage _ _ _ _ = undefined
 
 -- TODO Not bothering with max string size.
 process
@@ -88,7 +99,7 @@ receiver :: Handle -> Context -> IO () -- Context
 receiver handle context = do
   rawSize <- BS.hGet handle 4
   case runGet getWord32le rawSize of
-    Left e -> sendErrorMessage handle e rawSize >> receiver handle context
+    Left e -> sendErrorMessage handle (cs e) rawSize >> receiver handle context
     Right wsize ->
       let size = fromIntegral wsize
       in if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
@@ -97,7 +108,7 @@ receiver handle context = do
              message <- BS.hGet handle (size - 4)
              case runGetState getMessageHeaders message (size - 4) of
                Left e ->
-                 sendErrorMessage handle e message >> receiver handle context
+                 sendErrorMessage handle (cs e) message >> receiver handle context
                Right ((msgType, tag), msgData) ->
                  let (response, updatedContext) =
                        processMessage msgType tag msgData context

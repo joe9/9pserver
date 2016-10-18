@@ -63,29 +63,67 @@ version (Tversion s rversion) context =
 -- makeQid x = do
 --     s <- getStat x
 --     return $ Qid (getQidTyp s) 0 42
-qid :: Vector (FSItem Context) -> Int -> Either NineError Qid
-qid v i =
-  case v V.!? i of
-    Nothing -> Left EInval
-    (Just Free) -> Left EInval
-    -- TODO get the type from stat
-    (Just (Dir d _)) -> Right (Qid [Directory] (dVersion d) (fromIntegral i))
-    -- TODO get the type from stat
-    (Just (File f)) -> Right (Qid [NineP.File] (fVersion f) (fromIntegral i))
+
+-- withFSItem :: Vector (FSItem Context) -> Int -> Either NineError Qid
+-- withFSItem :: Vector (FSItem t)
+--                     -> Int
+--                     -> (DirDetails t -> t1 -> (Either NineError b, t1))
+--                     -> (FileDetails t -> t1 -> (Either NineError b, t1))
+--                     -> (Either NineError (c -> (Either NineError b, c)))
+
+runEitherFunction :: (Either NineError a, t) -> (a -> b) -> (Either Rerror b, t)
+runEitherFunction f cf =
+  case f of
+    ( Left e, ulc ) -> (rerror e, ulc)
+    ( Right v, urc ) -> ((Right . cf) v, urc)
+
+runMaybeFunction :: (Maybe NineError, t) -> b -> (Either Rerror b, t)
+runMaybeFunction f cf =
+  case f of
+    (Just e, ulc) -> (rerror e, ulc)
+    (Nothing, urc ) -> (Right cf, urc)
+
+rerror :: NineError -> Either Rerror b
+rerror = Left . Rerror . showNineError
 
 -- 0 == root directory path == index in cQids
 attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
-attach (Tattach fid _ _ _) c =
-  case qid (cQids c) 0 of
-    Left e  -> ((Left . Rerror . showNineError) e, c)
-    Right q -> ((Right . Rattach) q, uc)
-  where
-    uc = c {cFids = HashMap.insert fid 0 (cFids c)}
+attach (Tattach fid afid uname aname) c =
+  -- validate fid
+  maybe (rerror EInval, c) f ((cQids c) V.!? 0)
+  where f d = runEitherFunction
+                 (((dAttach . fDetails) d) fid afid uname aname d c)
+                 Rattach
+
+-- qid :: Vector (FSItem Context) -> Int -> Either NineError Qid
+-- qid v i =
+--   case v V.!? i of
+--     Nothing -> Left EInval
+--     (Just Free) -> Left EInval
+--     -- TODO get the type from stat
+--     (Just (Dir d _)) -> Right (Qid [Directory] (dVersion d) (fromIntegral i))
+--     -- TODO get the type from stat
+--     (Just (File f)) -> Right (Qid [NineP.File] (fVersion f) (fromIntegral i))
+
+-- -- 0 == root directory path == index in cQids
+-- attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
+-- attach (Tattach fid _ _ _) c =
+--   case qid (cQids c) 0 of
+--     Left e  -> ((Left . Rerror . showNineError) e, c)
+--     Right q -> ((Right . Rattach) q, uc)
+--   where
+--     uc = c {cFids = HashMap.insert fid 0 (cFids c)}
 
 -- TODO The actual file is not removed on the server unless the fid had been opened with ORCLOSE.
 clunk :: Tclunk -> Context -> (Either Rerror Rclunk, Context)
 clunk (Tclunk fid) c =
-  (Right Rclunk, c {cFids = HashMap.delete fid (cFids c)})
+  maybe (rerror EInval, c) f ((cQids c) V.!? 0)
+  where f d = runMaybeFunction
+                 (((dClunk . fDetails) d) fid d c)
+                 Rclunk
+
+-- clunk (Tclunk fid) c =
+--   (Right Rclunk, c {cFids = HashMap.delete fid (cFids c)})
 
 flush :: Tflush -> Context -> (Either Rerror Rflush, Context)
 flush (Tflush _) c = (Right Rflush, c)
@@ -94,11 +132,110 @@ flush (Tflush _) c = (Right Rflush, c)
 remove :: Tremove -> Context -> (Either Rerror Rremove, Context)
 remove (Tremove fid) c =
   case HashMap.lookup fid (cFids c) of
-    Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)
-    Just i -> (Right Rremove
-             , c { cFids = HashMap.delete fid (cFids c)
-                 , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
-                 })
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runMaybeFunction
+                        (((dRemove . fDetails) d) fid d c)
+                        Rremove
+
+--     Just i -> (Right Rremove
+--              , c { cFids = HashMap.delete fid (cFids c)
+--                  , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
+--                  })
+
+-- open :: (Monad m, EmbedIO m) => NineFile m -> Nine m Qid
+-- open f = do
+--     makeQid $ f
+-- ropen (Msg _ t (Topen fid mode)) = do
+--     f <- lookup fid
+--     checkPerms f mode
+--     qid <- open f
+--     iou <- iounit
+--     return $ return $ Msg TRopen t $ Ropen qid iou
+
+open :: Topen -> Context -> (Either Rerror Ropen, Context)
+open (Topen fid mode) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runEitherFunction
+                        (((dOpen . fDetails) d) fid mode d c)
+                        (\(a,b) -> Ropen a b)
+
+create :: Tcreate -> Context -> (Either Rerror Rcreate, Context)
+create (Tcreate fid name permissions mode) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runEitherFunction
+                        (((dCreate . fDetails) d) fid name permissions mode d c)
+                        (\(a,b) -> Rcreate a b)
+
+-- rread :: (Monad m, EmbedIO m) => Msg -> Nine m [Msg]
+-- rread (Msg _ t (Tread fid offset count)) = do
+--     f <- lookup fid
+--     u <- iounit
+--     checkPerms f 0
+--     let    splitMsg d s = let r = splitMsg' d s in if null r then [B.empty] else r
+--            splitMsg' d s =
+--              if B.null d
+--              then []
+--              else let (a, b) = B.splitAt s d in a : splitMsg' b s
+--     case f of
+--         RegularFile {} -> do
+--             d <- call $ (read f) offset count
+--             mapM (return . Msg TRread t . Rread) $ splitMsg d $ fromIntegral u
+--         Directory {} -> do
+--             contents <- call $ getFiles f
+--             s <- mapM getStat $ contents
+--             let d = runPut $ mapM_ put s
+--             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
+
+read :: Tread -> Context -> (Either Rerror Rread, Context)
+read (Tread fid offset count) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runEitherFunction
+                        (((dRead . fDetails) d) fid offset count d c)
+                        Rread
+
+write :: Twrite -> Context -> (Either Rerror Rwrite, Context)
+write (Twrite fid offset count) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runEitherFunction
+                        (((dWrite . fDetails) d) fid offset count d c)
+                        Rwrite
+
+stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+stat (Tstat fid ) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runEitherFunction
+                        (((dReadStat . fDetails) d) fid d c)
+                        Rstat
+
+wstat :: Twstat -> Context -> (Either Rerror Rwstat, Context)
+wstat (Twstat fid stat) c =
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Just i ->
+        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        where f d = runMaybeFunction
+                        (((dWriteStat . fDetails) d) fid stat d c)
+                        Rwstat
+
+walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)
+walk (Twalk fid newfid nwnames) c = undefined
 
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
@@ -124,14 +261,14 @@ remove (Tremove fid) c =
 --     -- TODO implement
 --     return $ return $ Msg TRwstat t $ Rwstat
 
-stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
-stat (Tstat fid) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)
-    Just i -> (Right Rstat
-             , c { cFids = HashMap.delete fid (cFids c)
-                 , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
-                 })
+-- stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+-- stat (Tstat fid) c =
+--   case HashMap.lookup fid (cFids c) of
+--     Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)
+--     Just i -> (Right Rstat
+--              , c { cFids = HashMap.delete fid (cFids c)
+--                  , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
+--                  })
 
 -- walk :: (Monad m, EmbedIO m) => [Qid] -> [String] -> NineFile m -> Nine m (NineFile m, [Qid])
 -- walk qs [] f = return (f, qs)
