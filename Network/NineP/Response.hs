@@ -180,25 +180,27 @@ create (Tcreate fid name permissions mode) c =
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
 
-read :: Tread -> Context -> (Either Rerror Rread, Context)
+read :: Tread -> Context -> IO (Either Rerror Rread, Context)
 read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
-        where f d = runEitherFunction
-                        (((dRead . fDetails) d) fid offset count i d c)
-                        Rread
+        case (cQids c) V.!? i of
+          Nothing -> return (rerror EInval, c)
+          Just d -> do
+            result <- ((dRead . fDetails) d) fid offset count i d c
+            return (runEitherFunction result Rread)
 
-write :: Twrite -> Context -> (Either Rerror Rwrite, Context)
+write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
 write (Twrite fid offset count) c =
   case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
-        where f d = runEitherFunction
-                        (((dWrite . fDetails) d) fid offset count i d c)
-                        Rwrite
+        case (cQids c) V.!? i of
+          Nothing -> return (rerror EInval, c)
+          Just d -> do
+            result <- ((dWrite . fDetails) d) fid offset count i d c
+            return (runEitherFunction result Rwrite)
 
 rstat :: Tstat -> Context -> (Either Rerror Rstat, Context)
 rstat (Tstat fid ) c =

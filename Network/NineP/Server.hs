@@ -68,8 +68,6 @@ processMessage MT.Tflush = process flush
 processMessage MT.Tremove = process remove
 processMessage MT.Topen = process open
 processMessage MT.Tcreate = process create
-processMessage MT.Tread = process read
-processMessage MT.Twrite = process write
 processMessage MT.Tstat = process rstat
 processMessage MT.Twstat = process wstat
 processMessage MT.Twalk = process walk
@@ -92,6 +90,24 @@ process f tag msg c =
         (Left e, cn)  -> (toNinePFormat e tag, cn)
         (Right m, cn) -> (toNinePFormat m tag, cn)
 
+-- TODO Not bothering with max string size.
+processIO
+  :: forall t a.
+     (ToNinePFormat a, Serialize t)
+  => (t -> Context -> IO (Either Rerror a, Context))
+  -> Tag
+  -> ByteString
+  -> Context
+  -> IO (ByteString, Context)
+processIO f tag msg c =
+  case runGet get msg of
+    Left e -> return (toNinePFormat (Rerror (cs e)) tag, c)
+    Right d -> do
+      eitherResult <- f d c
+      case eitherResult of
+        (Left e, cn)  -> return (toNinePFormat e tag, cn)
+        (Right m, cn) -> return (toNinePFormat m tag, cn)
+
 -- validate if size < maximum size (Nothing about it in intro(5))??
 getMessageHeaders :: Get (TransmitMessageType, Tag)
 getMessageHeaders = do
@@ -113,6 +129,14 @@ receiver handle context = do
              case runGetState getMessageHeaders message (size - 4) of
                Left e ->
                  sendErrorMessage handle (cs e) message >> receiver handle context
+               Right ((MT.Tread, tag), msgData) -> do
+                 (response, updatedContext) <-
+                       processIO read tag msgData context
+                 BS.hPut handle response >> receiver handle updatedContext
+               Right ((MT.Twrite, tag), msgData) -> do
+                 (response, updatedContext) <-
+                       processIO write tag msgData context
+                 BS.hPut handle response >> receiver handle updatedContext
                Right ((msgType, tag), msgData) ->
                  let (response, updatedContext) =
                        processMessage msgType tag msgData context

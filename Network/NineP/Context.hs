@@ -245,7 +245,7 @@ fileRead
   -> IndexInQids
   -> FSItem Context
   -> Context
-  -> (Either NineError ByteString, Context)
+  -> IO (Either NineError ByteString, Context)
 fileRead fid offset len i me c = undefined
 
 -- TODO check for permissions, iounit details, etc
@@ -256,7 +256,7 @@ dirRead
   -> IndexInQids
   -> FSItem Context
   -> Context
-  -> (Either NineError ByteString, Context)
+  -> IO (Either NineError ByteString, Context)
 dirRead fid offset len i me c = undefined
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
