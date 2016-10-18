@@ -5,6 +5,12 @@
 
 module Network.NineP
     ( module Network.NineP.Server
+    , module Network.NineP.Context
+    , module Network.NineP.Error
+    , module Network.NineP.File
     ) where
 
 import Network.NineP.Server
+import Network.NineP.Context
+import Network.NineP.Error
+import Network.NineP.File
