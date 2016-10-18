@@ -80,11 +80,11 @@ runMaybeFunction f cf =
 rerror :: NineError -> Either Rerror b
 rerror = Left . Rerror . showNineError
 
--- 0 == root directory path == index in cQids
+-- 0 == root directory path == index in cFSItems
 attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
 attach (Tattach fid afid uname aname) c =
   -- validate fid
-  maybe (rerror EInval, c) f ((cQids c) V.!? 0)
+  maybe (rerror EInval, c) f ((cFSItems c) V.!? 0)
   where f d = runEitherFunction
                  (((dAttach . fDetails) d) fid afid uname aname 0 d c)
                  Rattach
@@ -99,10 +99,10 @@ attach (Tattach fid afid uname aname) c =
 --     -- TODO get the type from stat
 --     (Just (File f)) -> Right (Qid [NineP.File] (fVersion f) (fromIntegral i))
 
--- -- 0 == root directory path == index in cQids
+-- -- 0 == root directory path == index in cFSItems
 -- attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
 -- attach (Tattach fid _ _ _) c =
---   case qid (cQids c) 0 of
+--   case qid (cFSItems c) 0 of
 --     Left e  -> ((Left . Rerror . showNineError) e, c)
 --     Right q -> ((Right . Rattach) q, uc)
 --   where
@@ -111,7 +111,7 @@ attach (Tattach fid afid uname aname) c =
 -- TODO The actual file is not removed on the server unless the fid had been opened with ORCLOSE.
 clunk :: Tclunk -> Context -> (Either Rerror Rclunk, Context)
 clunk (Tclunk fid) c =
-  maybe (rerror EInval, c) f ((cQids c) V.!? 0)
+  maybe (rerror EInval, c) f ((cFSItems c) V.!? 0)
   where f d = runMaybeFunction
                  (((dClunk . fDetails) d) fid d c)
                  Rclunk
@@ -125,7 +125,7 @@ remove (Tremove fid) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
         where f d = runMaybeFunction
                         (((dRemove . fDetails) d) fid i d c)
                         Rremove
@@ -145,7 +145,7 @@ open (Topen fid mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
         where f d = runEitherFunction
                         (((dOpen . fDetails) d) fid mode i d c)
                         (\(a,b) -> Ropen a b)
@@ -155,7 +155,7 @@ create (Tcreate fid name permissions mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
         where f d = runEitherFunction
                         (((dCreate . fDetails) d) fid name permissions mode d c)
                         (\(a,b) -> Rcreate a b)
@@ -185,7 +185,7 @@ read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        case (cQids c) V.!? i of
+        case (cFSItems c) V.!? i of
           Nothing -> return (rerror EInval, c)
           Just d -> do
             result <- ((dRead . fDetails) d) fid offset count i d c
@@ -196,7 +196,7 @@ write (Twrite fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        case (cQids c) V.!? i of
+        case (cFSItems c) V.!? i of
           Nothing -> return (rerror EInval, c)
           Just d -> do
             result <- ((dWrite . fDetails) d) fid offset count i d c
@@ -207,7 +207,7 @@ rstat (Tstat fid ) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
         where f d = runEitherFunction
                         (((dReadStat . fDetails) d) fid d c)
                         Rstat
@@ -217,7 +217,7 @@ wstat (Twstat fid stat) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cQids c) V.!? i)
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
         where f d = runMaybeFunction
                         (((dWriteStat . fDetails) d) fid stat i d c)
                         Rwstat
@@ -255,7 +255,7 @@ walk (Twalk fid newfid nwnames) c = undefined
 --     Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)
 --     Just i -> (Right Rstat
 --              , c { cFids = HashMap.delete fid (cFids c)
---                  , cQids = V.modify (\v -> DVM.write v i Free) (cQids c)
+--                  , cFSItems = V.modify (\v -> DVM.write v i Free) (cFSItems c)
 --                  })
 
 -- walk :: (Monad m, EmbedIO m) => [Qid] -> [String] -> NineFile m -> Nine m (NineFile m, [Qid])

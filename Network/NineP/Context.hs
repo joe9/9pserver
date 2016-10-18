@@ -94,7 +94,7 @@ validateNineVersion s =
 -- <joe9> Thanks a lot . Your input was very helpful.  [21:31]
 -- <joe9> geekosaur: https://paste.pound-python.org/show/Bd5NGkjAwxeoYWcEt4Er/ is what I have come up with  [21:51]
 -- <joe9> geekosaur: as an fyi, http://dpaste.com/0MW2161 is what I ended up with. Thanks.  [08:56]
--- <joe9> geekosaur: for finding a file/dir, I would have to go through the whole vector of cQids, correct?  [08:57]
+-- <joe9> geekosaur: for finding a file/dir, I would have to go through the whole vector of cFSItems, correct?  [08:57]
 -- <geekosaur> yes. this is going to be true of any structure  [08:58]
 -- <joe9> geekosaur: http://dpaste.com/3NDWKQK is the relevant file ADT
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
@@ -104,7 +104,7 @@ data Context = Context
   { cFids           :: HashMap.HashMap Fid QidsIndex
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
-  , cQids           :: Vector (FSItem Context)
+  , cFSItems           :: Vector (FSItem Context)
   , cMaxMessageSize :: Int
   }
 
@@ -269,7 +269,7 @@ fileRemove fid index _ c =
   ( Nothing
   , c
     { cFids = HashMap.delete fid (cFids c)
-    , cQids = V.modify (\v -> DVM.write v index none) (cQids c)
+    , cFSItems = V.modify (\v -> DVM.write v index none) (cFSItems c)
     })
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
@@ -301,7 +301,7 @@ writeStat _ stat index me c =
         }
       newFSItem = me {fDetails = (fDetails me) {dStat = updatedStat}}
       updatedContext =
-        c {cQids = V.modify (\v -> DVM.write v index newFSItem) (cQids c)}
+        c {cFSItems = V.modify (\v -> DVM.write v index newFSItem) (cFSItems c)}
   in (Nothing, updatedContext)
 
 nullStat :: Stat
