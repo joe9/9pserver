@@ -14,7 +14,7 @@ module Network.NineP.Server
 
 import           Control.Exception.Safe  hiding (handle)
 import           Data.ByteString         (ByteString)
-import           Protolude hiding (bracket, get)
+import           Protolude hiding (bracket, get, handle, msg)
 import qualified Data.ByteString         as BS
 import           Data.Serialize hiding (flush)
 import           Data.String.Conversions
@@ -40,8 +40,12 @@ run9PServer :: Context -> IO ()
 run9PServer context = do
   serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
     putStrLn $ "TCP connection established from " ++ show remoteAddr
+    clientConnection connectionSocket remoteAddr context
     -- Now you may use connectionSocket as you please within this scope,
     -- possibly using recv and send to interact with the remote end.
+
+clientConnection :: Socket -> t -> Context -> IO ()
+clientConnection connectionSocket _ context =
     bracket
       (socketToHandle connectionSocket ReadWriteMode)
       hClose
@@ -66,10 +70,10 @@ processMessage MT.Topen = process open
 processMessage MT.Tcreate = process create
 processMessage MT.Tread = process read
 processMessage MT.Twrite = process write
-processMessage MT.Tstat = process stat
+processMessage MT.Tstat = process rstat
 processMessage MT.Twstat = process wstat
 processMessage MT.Twalk = process walk
--- processMessage _ _ _ _ = undefined
+processMessage _ = undefined
 
 -- TODO Not bothering with max string size.
 process

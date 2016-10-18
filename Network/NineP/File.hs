@@ -5,8 +5,6 @@ module Network.NineP.File where
 
 import Protolude
 import Data.ByteString (ByteString)
-import           Data.Default
-import           qualified Data.HashMap.Strict as HashMap
 import           Data.Text                  (Text)
 import           Data.Vector                (Vector)
 

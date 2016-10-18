@@ -3,17 +3,13 @@
 
 module Network.NineP.Context where
 
+import qualified Data.ByteString     as BS
 import           Data.HashMap.Strict as HashMap
-import qualified Data.Text           as T
+import           Data.NineP          hiding (Directory)
+import qualified Data.NineP          as NineP
 import           Data.Vector         (Vector)
 import qualified Data.Vector         as V
 import qualified Data.Vector.Mutable as DVM
-import           Protolude
-import           TextShow
-
-import qualified Data.ByteString as BS
-import           Data.NineP      hiding (Directory)
-import qualified Data.NineP      as NineP
 import           Protolude
 
 import Network.NineP.Error
@@ -119,7 +115,7 @@ initializeContext = Context HashMap.empty V.empty 8196
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
 
-fileDetails, dirDetails, noneDetails  :: Details Context
+fileDetails, dirDetails, noneDetails :: Details Context
 fileDetails =
   Details
   { dOpen = fileOpen
@@ -153,9 +149,9 @@ dirDetails =
   , dRemove = undefined
   , dVersion = 0
   }
+-- NineError message
 
 -- TODO change all the undefineds to return the old context and a
-  -- NineError message
 noneDetails =
   Details
   { dOpen = undefined
@@ -198,7 +194,7 @@ dirAttach
   -> FSItem Context
   -> Context
   -> (Either NineError Qid, Context)
-dirAttach fid afid username accessname i d c =
+dirAttach fid _ _ _ i d c =
   ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
   , c {cFids = HashMap.insert fid 0 (cFids c)})
 
@@ -220,7 +216,7 @@ fileOpen
   -> FSItem Context
   -> Context
   -> (Either NineError (Qid, IOUnit), Context)
-fileOpen fid mode i me c =
+fileOpen fid _ i me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in ( Right
          (Qid [NineP.File] ((dVersion . fDetails) me) (fromIntegral i), iounit)
@@ -234,7 +230,7 @@ dirOpen
   -> FSItem Context
   -> Context
   -> (Either NineError (Qid, IOUnit), Context)
-dirOpen fid mode i me c =
+dirOpen fid _ i me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in ( Right
          ( Qid [NineP.Directory] ((dVersion . fDetails) me) (fromIntegral i)
@@ -287,7 +283,7 @@ writeStat :: Fid
           -> FSItem Context
           -> Context
           -> (Maybe NineError, Context)
-writeStat fid stat index me c =
+writeStat _ stat index me c =
   let oldstat = (dStat . fDetails) me
       updatedStat =
         oldstat

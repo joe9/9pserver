@@ -12,12 +12,8 @@ module Network.NineP.Error
     ) where
 
 import Protolude hiding (concat)
-import Control.Exception
-import Data.Typeable
-import Data.Word
 import Data.ByteString
 import Data.Serialize
-import Data.String.Conversions
 
 data NineError =
     ENotImplemented ByteString |

@@ -3,18 +3,12 @@
 
 module Network.NineP.Response where
 
-import qualified Data.ByteString     as BS
 import           Data.HashMap.Strict as HashMap
 import           Data.Maybe
-import qualified Data.Text           as T
-import           Data.Vector         (Vector)
 import qualified Data.Vector         as V
-import qualified  Data.Vector.Mutable as DVM
-import           Data.Word
 import           Protolude
-import           TextShow
 
-import           Data.NineP                     hiding (File)
+import Data.NineP                     hiding (File)
 import qualified Data.NineP                     as NineP
 import           Network.NineP.Error
 import           Network.NineP.Context
@@ -206,8 +200,8 @@ write (Twrite fid offset count) c =
                         (((dWrite . fDetails) d) fid offset count i d c)
                         Rwrite
 
-stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
-stat (Tstat fid ) c =
+rstat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+rstat (Tstat fid ) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
