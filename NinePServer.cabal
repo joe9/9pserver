@@ -39,6 +39,9 @@ Library
               , data-default
               , NineP
               , stm
+              , groom
+              , posix-paths
+              , unix
   Exposed-modules:
                   Network.NineP
                   Network.NineP.Error

@@ -90,6 +90,49 @@ process f tag msg c =
         (Right m, cn) -> (toNinePFormat m tag, cn)
 
 -- TODO Not bothering with max string size.
+processRead
+  :: forall t a.
+     (ToNinePFormat a, Serialize t)
+  => (Tag -> t -> Context -> IO (Maybe (Either Rerror a), Context))
+  -> Tag
+  -> ByteString
+  -> Context
+  -> IO (Maybe ByteString, Context)
+processRead f tag msg c =
+  case runGet get msg of
+    Left e -> return (Just (toNinePFormat (Rerror (cs e)) tag), c)
+    Right d -> do
+      maybeResult <- f tag d c
+      case maybeResult of
+        (Nothing, cn) -> return (Nothing, cn)
+        (Just eitherResult, cn) -> do
+            case eitherResult of
+                Left e  -> return (Just (toNinePFormat e tag), cn)
+                Right m -> return (Just (toNinePFormat m tag), cn)
+
+processWrite
+  :: (Twrite -> Context -> IO (Either Rerror (Rwrite,[(Tag,Either Rerror Rread)]), Context))
+  -> Tag
+  -> ByteString
+  -> Context
+  -> IO (ByteString, Context)
+processWrite f tag msg c =
+  case runGet get msg of
+    Left e -> return (toNinePFormat (Rerror (cs e)) tag, c)
+    Right d -> do
+      eitherResult <- f d c
+      case eitherResult of
+        (Left e, cn)  -> return (toNinePFormat e tag, cn)
+        (Right (w,rs), cn) ->
+          return (BS.concat (toNinePFormat w tag : (fmap (uncurry formatReadMessage . swap) rs)) , cn)
+
+formatReadMessage :: Either Rerror Rread -> Tag -> ByteString
+formatReadMessage eitherResult tag =
+    case eitherResult of
+        Left e  -> toNinePFormat e tag
+        Right m -> toNinePFormat m tag
+
+-- TODO Not bothering with max string size.
 processIO
   :: forall t a.
      (ToNinePFormat a, Serialize t)
@@ -130,11 +173,13 @@ receiver handle context = do
                  sendErrorMessage handle (cs e) message >> receiver handle context
                Right ((MT.Tread, tag), msgData) -> do
                  (response, updatedContext) <-
-                       processIO read tag msgData context
-                 BS.hPut handle response >> receiver handle updatedContext
+                       processRead read tag msgData context
+                 case response of
+                   Nothing -> receiver handle updatedContext
+                   Just r -> BS.hPut handle r >> receiver handle updatedContext
                Right ((MT.Twrite, tag), msgData) -> do
                  (response, updatedContext) <-
-                       processIO write tag msgData context
+                       processWrite write tag msgData context
                  BS.hPut handle response >> receiver handle updatedContext
                Right ((MT.Topen, tag), msgData) -> do
                  (response, updatedContext) <-

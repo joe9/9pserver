@@ -3,15 +3,21 @@
 
 module Network.NineP.Context where
 
-import qualified Data.ByteString     as BS
-import           Data.HashMap.Strict as HashMap
-import           Data.NineP          hiding (Directory)
-import qualified Data.NineP          as NineP
-import           Data.Vector         (Vector)
-import qualified Data.Vector         as V
-import qualified Data.Vector.Mutable as DVM
-import           Protolude
 import           Control.Concurrent.STM.TQueue
+import qualified Data.ByteString               as BS
+import           Data.HashMap.Strict           as HashMap
+import           Data.List
+import           Data.NineP                    hiding (Directory)
+import qualified Data.NineP                    as NineP
+import           Data.String.Conversions
+import           Data.Vector                   (Vector)
+import qualified Data.Vector                   as V
+import           System.Posix.ByteString.FilePath
+import           System.Posix.FilePath
+import qualified Data.Vector.Mutable           as DVM
+import           GHC.Show
+import           Protolude
+import           Text.Groom
 
 import Network.NineP.Error
 
@@ -69,8 +75,7 @@ validateNineVersion s =
 --             directory vectors the delete behavior is what you want
 -- <geekosaur> you don't want to use list for either of these if you are removing things, because that's where linked lists become painful  [21:20]
 -- <joe9> What do you mean by "directory vectors"?  [21:21]
--- <geekosaur> "one of the things in it is an ADT with File and Dir selectors; the File one contains the access functions as a record, the Dir one is a list or Vector of [name,
---             inumber]"
+-- <geekosaur> "one of the things in it is an ADT with File and Dir selectors; the File one contains the access functions as a record, the Dir one is a list or Vector of [name, inumber]"
 -- <geekosaur> which I said earlier
 -- <joe9> oh, ok. Thanks. Sorry, I missed that.
 -- <geekosaur> so now it is File {operation record} | Dir DirVector | Free  [21:22]
@@ -98,41 +103,51 @@ validateNineVersion s =
 -- <geekosaur> yes. this is going to be true of any structure  [08:58]
 -- <joe9> geekosaur: http://dpaste.com/3NDWKQK is the relevant file ADT
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
-type FSItemsIndex = Int
-
-data FSItemType = Directory | File | None
+data FSItemType
+  = Directory
+  | File
+  | None
+  deriving (Eq, Show)
 
 data FSItem s = FSItem
-    { fType :: FSItemType
-    , fDetails :: Details s
-    , fChildren :: Maybe (Vector (FSItem s))
-    , fOpenFids :: [Fid]
-    }
+  { fType     :: FSItemType
+  , fDetails  :: Details s
+  , fOpenFids :: [Fid]
+  }
+
+instance Show (FSItem s) where
+  show f =
+    unwords [groom (fType f)
+            , (groom . dVersion . fDetails) f
+            , (groom . dStat . fDetails) f
+            , groom (fOpenFids f)]
 
 type IOUnit = Word32
-type IndexInQids = Int
+
+type FSItemsIndex = Int
 
 -- TODO add name
 data Details s = Details
-  { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid,IOUnit), s)
+  { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
   , dWalk :: Fid -> NewFid -> [Text] -> FSItem s -> s -> (Either NineError [Qid], s)
-  , dRead :: Fid -> Offset -> Length -> FidState -> FSItem s -> s -> IO (Either NineError ByteString, s)
+  , dRead :: Tag -> Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Maybe (Either NineError ByteString), s)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
-  , dWrite :: Fid -> Offset -> ByteString -> FidState ->  FSItem s -> s -> IO (Either NineError Length, s)
+  , dWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
   , dClunk :: Fid -> FSItem s -> s -> (Maybe NineError, s)
   , dFlush :: FSItem s -> s -> s
-  , dAttach :: Fid -> AFid -> UserName -> AccessName -> IndexInQids -> FSItem s -> s -> (Either NineError Qid, s)
-  , dCreate :: Fid -> ByteString -> Permissions -> Mode -> FSItem s -> s -> (Either NineError (Qid,IOUnit), s)
+  , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItemsIndex -> FSItem s -> s -> (Either NineError Qid, s)
+  , dCreate :: Fid -> ByteString -> Permissions -> Mode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
   , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dVersion :: Word32
   }
 
-data FidState = FidState { fidQueue :: Maybe ( TQueue ByteString)
-                         , fidFSItemsIndex :: FSItemsIndex
-                         , fidReadBlockedChildren :: [Async ByteString]
-                         }
+data FidState = FidState
+  { fidQueue               :: Maybe (TQueue ByteString)
+  , fidFSItemsIndex        :: FSItemsIndex
+  , fidReadBlockedChildren :: [(Tag, Async ByteString)]
+  }
 
 data Context = Context
   { cFids           :: HashMap.HashMap Fid FidState
@@ -152,13 +167,15 @@ initializeContext = Context HashMap.empty V.empty 8196
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
 
-fileDetails, dirDetails, noneDetails :: Details Context
-fileDetails =
+-- TODO need some validation to ensure that the parent directory exists
+-- name is an absolute path
+fileDetails, dirDetails :: RawFilePath -> Details Context
+fileDetails name =
   Details
   { dOpen = fileOpen
   , dWalk = undefined -- fileWalk
-  , dRead = undefined
-  , dStat = nullStat
+  , dRead = fileRead
+  , dStat = nullStat{stName = fileName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -170,12 +187,12 @@ fileDetails =
   , dVersion = 0
   }
 
-dirDetails =
+dirDetails name =
   Details
   { dOpen = dirOpen
   , dWalk = dirWalk
-  , dRead = undefined
-  , dStat = nullStat
+  , dRead = dirRead
+  , dStat = nullStat{stName = dirName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -186,9 +203,23 @@ dirDetails =
   , dRemove = undefined
   , dVersion = 0
   }
--- NineError message
 
+dirName :: RawFilePath -> RawFilePath
+dirName name
+  | isRelative name = error "dirName: directory name must be absolute"
+  | name == "/" = name
+  | hasTrailingPathSeparator name = name
+  | otherwise = addTrailingPathSeparator name
+
+fileName :: RawFilePath -> RawFilePath
+fileName name
+  | isRelative name = error "fileName: file name must be absolute"
+  | hasTrailingPathSeparator name = dropTrailingPathSeparator name
+  | otherwise = name
+
+-- NineError message
 -- TODO change all the undefineds to return the old context and a
+noneDetails :: Details Context
 noneDetails =
   Details
   { dOpen = undefined
@@ -207,7 +238,7 @@ noneDetails =
   }
 
 none :: FSItem Context
-none = FSItem None noneDetails Nothing []
+none = FSItem None noneDetails []
 
 -- fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
@@ -215,8 +246,12 @@ none = FSItem None noneDetails Nothing []
 -- fileWalk = ENotADir
 -- fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
 -- fileRead _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
--- fileWrite :: Fid -> Offset -> B.ByteString -> s -> (Either NineError Length, s)
+
+-- fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
+-- fileWrite fid offset bs (FidState _ i c)
+
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
+
 fdClunk :: Fid -> FSItem Context -> Context -> (Maybe NineError, Context)
 fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
@@ -227,7 +262,7 @@ dirAttach
   -> AFid
   -> UserName
   -> AccessName
-  -> IndexInQids
+  -> FSItemsIndex
   -> FSItem Context
   -> Context
   -> (Either NineError Qid, Context)
@@ -258,9 +293,10 @@ fileOpen
 fileOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
-        ( Right
-            (Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState), iounit)
-        , c)
+       ( Right
+           ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
+           , iounit)
+       , c)
 
 -- TODO check for permissions, etc
 -- TODO bug creating fid should happen in walk, not here
@@ -275,32 +311,59 @@ dirOpen
 dirOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
-        ( Right
-            ( Qid [NineP.Directory] ((dVersion . fDetails) me) (indexToQPath fidState)
-            , iounit)
-        , c)
+       ( Right
+           ( Qid
+               [NineP.Directory]
+               ((dVersion . fDetails) me)
+               (indexToQPath fidState)
+           , iounit)
+       , c)
+
+fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
+fileWrite _ _ _ (FidState Nothing _ _) _ c =
+  return ((Left . OtherError) "No Queue to read from", c)
+fileWrite fid offset bs fs@(FidState (Just q) i as) me c = do
+  atomically (writeTQueue q bs)
+  return ((Right . fromIntegral . BS.length) bs, c)
 
 -- TODO check for permissions, iounit details, etc
+-- TODO ignoring offset and count
 fileRead
-  :: Fid
+  :: Tag
+  -> Fid
   -> Offset
-  -> Length
-  -> IndexInQids
+  -> Count
+  -> FidState
   -> FSItem Context
   -> Context
-  -> IO (Either NineError ByteString, Context)
-fileRead fid offset len i me c = undefined
+  -> IO (Maybe (Either NineError ByteString), Context)
+fileRead _ _ _ _ (FidState Nothing _ _) _ c = return (Just ((Left . OtherError) "No Queue to read from"), c)
+fileRead tag fid offset _ fs@(FidState (Just q) i as) me c = do
+  value <- atomically (tryReadTQueue q)
+  case value of
+    Nothing -> do
+                asyncValue <- async (atomically (readTQueue q))
+                let fs = fs{fidReadBlockedChildren = ( tag,asyncValue): as}
+                return (Nothing, c{cFids = HashMap.insert fid fs (cFids c)})
+    Just bs -> return (Just (Right bs), c)
+--   if BS.length bs > fromIntegral count
+--     then do
+--         let (sendBs, putBack) = BS.splitAt (fromIntegral count) bs
+--         atomically (unGetTQueue q putBack)
+--         return (Right sendBs, c)
+--     else return (Right bs, c)
 
 -- TODO check for permissions, iounit details, etc
 dirRead
-  :: Fid
+  :: Tag
+  -> Fid
   -> Offset
-  -> Length
-  -> IndexInQids
+  -> Count
+  -> FidState
   -> FSItem Context
   -> Context
-  -> IO (Either NineError ByteString, Context)
-dirRead fid offset len i me c = undefined
+  -> IO (Maybe ( Either NineError ByteString), Context)
+dirRead tag fid offset count i me c = undefined
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid
@@ -312,21 +375,22 @@ fileRemove fid fidState _ c =
   let index = fidFSItemsIndex fidState
   in ( Nothing
      , c
-        { cFids = HashMap.delete fid (cFids c)
-        , cFSItems = V.modify (\v -> DVM.write v index none) (cFSItems c)
-        })
+       { cFids = HashMap.delete fid (cFids c)
+       , cFSItems = V.modify (\v -> DVM.write v index none) (cFSItems c)
+       })
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
 readStat _ me context = ((Right . dStat . fDetails) me, context)
 
 -- TODO check permissions when doing this
 -- TODO allow more changes to stat as per the spec
-writeStat :: Fid
-          -> Stat
-          -> FidState
-          -> FSItem Context
-          -> Context
-          -> (Maybe NineError, Context)
+writeStat
+  :: Fid
+  -> Stat
+  -> FidState
+  -> FSItem Context
+  -> Context
+  -> (Maybe NineError, Context)
 writeStat _ stat fidState me c =
   let oldstat = (dStat . fDetails) me
       updatedStat =
