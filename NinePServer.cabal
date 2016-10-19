@@ -38,6 +38,7 @@ Library
               , network-simple
               , data-default
               , NineP
+              , stm
   Exposed-modules:
                   Network.NineP
                   Network.NineP.Error

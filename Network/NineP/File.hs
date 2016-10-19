@@ -21,8 +21,9 @@ data FSItem s = FSItem
 type IOUnit = Word32
 type IndexInQids = Int
 
+-- TODO add name
 data Details s = Details
-  { dOpen :: Fid -> Mode -> IndexInQids -> FSItem s -> s -> (Either NineError (Qid,IOUnit), s)
+  { dOpen :: Fid -> Mode -> IndexInQids -> FSItem s -> s -> IO (Either NineError (Qid,IOUnit), s)
   , dWalk :: Fid -> NewFid -> [Text] -> FSItem s -> s -> (Either NineError [Qid], s)
   , dRead :: Fid -> Offset -> Length -> IndexInQids -> FSItem s -> s -> IO (Either NineError ByteString, s)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)

@@ -66,7 +66,6 @@ processMessage MT.Tattach = process attach
 processMessage MT.Tclunk = process clunk
 processMessage MT.Tflush = process flush
 processMessage MT.Tremove = process remove
-processMessage MT.Topen = process open
 processMessage MT.Tcreate = process create
 processMessage MT.Tstat = process rstat
 processMessage MT.Twstat = process wstat
@@ -136,6 +135,10 @@ receiver handle context = do
                Right ((MT.Twrite, tag), msgData) -> do
                  (response, updatedContext) <-
                        processIO write tag msgData context
+                 BS.hPut handle response >> receiver handle updatedContext
+               Right ((MT.Topen, tag), msgData) -> do
+                 (response, updatedContext) <-
+                       processIO open tag msgData context
                  BS.hPut handle response >> receiver handle updatedContext
                Right ((msgType, tag), msgData) ->
                  let (response, updatedContext) =

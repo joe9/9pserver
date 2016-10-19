@@ -11,6 +11,7 @@ import           Data.Vector         (Vector)
 import qualified Data.Vector         as V
 import qualified Data.Vector.Mutable as DVM
 import           Protolude
+import           Control.Concurrent.STM.TQueue
 
 import Network.NineP.Error
 import Network.NineP.File
@@ -98,10 +99,14 @@ validateNineVersion s =
 -- <geekosaur> yes. this is going to be true of any structure  [08:58]
 -- <joe9> geekosaur: http://dpaste.com/3NDWKQK is the relevant file ADT
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
-type QidsIndex = Int
+type FSItemsIndex = Int
+
+data FidState = FidState { fChan :: TQueue ByteString
+                         , fFSItemsIndex :: Int
+                         }
 
 data Context = Context
-  { cFids           :: HashMap.HashMap Fid QidsIndex
+  { cFids           :: HashMap.HashMap Fid FSItemsIndex
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
   , cFSItems           :: Vector (FSItem Context)
@@ -215,12 +220,13 @@ fileOpen
   -> IndexInQids
   -> FSItem Context
   -> Context
-  -> (Either NineError (Qid, IOUnit), Context)
+  -> IO (Either NineError (Qid, IOUnit), Context)
 fileOpen fid _ i me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
-  in ( Right
-         (Qid [NineP.File] ((dVersion . fDetails) me) (fromIntegral i), iounit)
-     , c {cFids = HashMap.insert fid i (cFids c)})
+  in return
+        ( Right
+            (Qid [NineP.File] ((dVersion . fDetails) me) (fromIntegral i), iounit)
+        , c {cFids = HashMap.insert fid i (cFids c)})
 
 -- TODO check for permissions, etc
 dirOpen
@@ -229,13 +235,14 @@ dirOpen
   -> IndexInQids
   -> FSItem Context
   -> Context
-  -> (Either NineError (Qid, IOUnit), Context)
+  -> IO (Either NineError (Qid, IOUnit), Context)
 dirOpen fid _ i me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
-  in ( Right
-         ( Qid [NineP.Directory] ((dVersion . fDetails) me) (fromIntegral i)
-         , iounit)
-     , c {cFids = HashMap.insert fid i (cFids c)})
+  in return
+        ( Right
+            ( Qid [NineP.Directory] ((dVersion . fDetails) me) (fromIntegral i)
+            , iounit)
+        , c {cFids = HashMap.insert fid i (cFids c)})
 
 -- TODO check for permissions, iounit details, etc
 fileRead

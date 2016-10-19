@@ -140,15 +140,16 @@ remove (Tremove fid) c =
 --     iou <- iounit
 --     return $ return $ Msg TRopen t $ Ropen qid iou
 
-open :: Topen -> Context -> (Either Rerror Ropen, Context)
+open :: Topen -> Context -> IO (Either Rerror Ropen, Context)
 open (Topen fid mode) c =
   case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
+    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just i ->
-        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
-        where f d = runEitherFunction
-                        (((dOpen . fDetails) d) fid mode i d c)
-                        (\(a,b) -> Ropen a b)
+        case (cFSItems c) V.!? i of
+          Nothing -> return (rerror EInval, c)
+          Just d -> do
+            result <- ((dOpen . fDetails) d) fid mode i d c
+            return (runEitherFunction result (uncurry Ropen))
 
 create :: Tcreate -> Context -> (Either Rerror Rcreate, Context)
 create (Tcreate fid name permissions mode) c =
