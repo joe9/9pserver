@@ -101,8 +101,9 @@ validateNineVersion s =
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
 type FSItemsIndex = Int
 
-data FidState = FidState { fChan :: TQueue ByteString
+data FidState = FidState { fQueue :: TQueue ByteString
                          , fFSItemsIndex :: Int
+                         , fBlockedChildren :: [Async ByteString]
                          }
 
 data Context = Context
