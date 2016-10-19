@@ -12,7 +12,6 @@ import Data.NineP                     hiding (File)
 import qualified Data.NineP                     as NineP
 import           Network.NineP.Error
 import           Network.NineP.Context
-import           Network.NineP.File
 
 -- TODO Not bothering with T.chunksOf on size.
 -- assuming that the length of bytestring will be the same as that of
@@ -124,10 +123,10 @@ remove :: Tremove -> Context -> (Either Rerror Rremove, Context)
 remove (Tremove fid) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
+    Just fds ->
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
         where f d = runMaybeFunction
-                        (((dRemove . fDetails) d) fid i d c)
+                        (((dRemove . fDetails) d) fid fds d c)
                         Rremove
 
 -- open :: (Monad m, EmbedIO m) => NineFile m -> Nine m Qid
@@ -144,19 +143,19 @@ open :: Topen -> Context -> IO (Either Rerror Ropen, Context)
 open (Topen fid mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        case (cFSItems c) V.!? i of
+    Just fds ->
+        case (cFSItems c) V.!? (fidFSItemsIndex fds) of
           Nothing -> return (rerror EInval, c)
           Just d -> do
-            result <- ((dOpen . fDetails) d) fid mode i d c
+            result <- ((dOpen . fDetails) d) fid mode fds d c
             return (runEitherFunction result (uncurry Ropen))
 
 create :: Tcreate -> Context -> (Either Rerror Rcreate, Context)
 create (Tcreate fid name permissions mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
+    Just fds ->
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
         where f d = runEitherFunction
                         (((dCreate . fDetails) d) fid name permissions mode d c)
                         (\(a,b) -> Rcreate a b)
@@ -185,30 +184,30 @@ read :: Tread -> Context -> IO (Either Rerror Rread, Context)
 read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        case (cFSItems c) V.!? i of
+    Just fds ->
+        case (cFSItems c) V.!? (fidFSItemsIndex fds) of
           Nothing -> return (rerror EInval, c)
           Just d -> do
-            result <- ((dRead . fDetails) d) fid offset count i d c
+            result <- ((dRead . fDetails) d) fid offset count fds d c
             return (runEitherFunction result Rread)
 
 write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
 write (Twrite fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        case (cFSItems c) V.!? i of
+    Just fds ->
+        case (cFSItems c) V.!? (fidFSItemsIndex fds) of
           Nothing -> return (rerror EInval, c)
           Just d -> do
-            result <- ((dWrite . fDetails) d) fid offset count i d c
+            result <- ((dWrite . fDetails) d) fid offset count fds d c
             return (runEitherFunction result Rwrite)
 
 rstat :: Tstat -> Context -> (Either Rerror Rstat, Context)
 rstat (Tstat fid ) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
+    Just fds ->
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
         where f d = runEitherFunction
                         (((dReadStat . fDetails) d) fid d c)
                         Rstat
@@ -217,10 +216,10 @@ wstat :: Twstat -> Context -> (Either Rerror Rwstat, Context)
 wstat (Twstat fid stat) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just i ->
-        maybe (rerror EInval, c) f ((cFSItems c) V.!? i)
+    Just fds ->
+        maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
         where f d = runMaybeFunction
-                        (((dWriteStat . fDetails) d) fid stat i d c)
+                        (((dWriteStat . fDetails) d) fid stat fds d c)
                         Rwstat
 
 walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)

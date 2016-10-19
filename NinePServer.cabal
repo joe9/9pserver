@@ -44,7 +44,6 @@ Library
                   Network.NineP.Error
                   Network.NineP.Server
                   Network.NineP.Context
-                  Network.NineP.File
                   Network.NineP.Response
 
 -- Executable test

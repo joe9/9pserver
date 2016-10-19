@@ -14,7 +14,6 @@ import           Protolude
 import           Control.Concurrent.STM.TQueue
 
 import Network.NineP.Error
-import Network.NineP.File
 
 data NineVersion
   = VerUnknown
@@ -101,18 +100,50 @@ validateNineVersion s =
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
 type FSItemsIndex = Int
 
-data FidState = FidState { fQueue :: TQueue ByteString
-                         , fFSItemsIndex :: Int
-                         , fBlockedChildren :: [Async ByteString]
+data FSItemType = Directory | File | None
+
+data FSItem s = FSItem
+    { fType :: FSItemType
+    , fDetails :: Details s
+    , fChildren :: Maybe (Vector (FSItem s))
+    , fOpenFids :: [Fid]
+    }
+
+type IOUnit = Word32
+type IndexInQids = Int
+
+-- TODO add name
+data Details s = Details
+  { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid,IOUnit), s)
+  , dWalk :: Fid -> NewFid -> [Text] -> FSItem s -> s -> (Either NineError [Qid], s)
+  , dRead :: Fid -> Offset -> Length -> FidState -> FSItem s -> s -> IO (Either NineError ByteString, s)
+  , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
+  , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
+  , dStat :: Stat
+  , dWrite :: Fid -> Offset -> ByteString -> FidState ->  FSItem s -> s -> IO (Either NineError Length, s)
+  , dClunk :: Fid -> FSItem s -> s -> (Maybe NineError, s)
+  , dFlush :: FSItem s -> s -> s
+  , dAttach :: Fid -> AFid -> UserName -> AccessName -> IndexInQids -> FSItem s -> s -> (Either NineError Qid, s)
+  , dCreate :: Fid -> ByteString -> Permissions -> Mode -> FSItem s -> s -> (Either NineError (Qid,IOUnit), s)
+  , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
+  , dVersion :: Word32
+  }
+
+data FidState = FidState { fidQueue :: Maybe ( TQueue ByteString)
+                         , fidFSItemsIndex :: FSItemsIndex
+                         , fidReadBlockedChildren :: [Async ByteString]
                          }
 
 data Context = Context
-  { cFids           :: HashMap.HashMap Fid FSItemsIndex
+  { cFids           :: HashMap.HashMap Fid FidState
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
-  , cFSItems           :: Vector (FSItem Context)
+  , cFSItems        :: Vector (FSItem Context)
   , cMaxMessageSize :: Int
   }
+
+indexToQPath :: FidState -> Word64
+indexToQPath = fromIntegral . fidFSItemsIndex
 
 -- TODO : Add to FileSystem
 initializeContext :: Context
@@ -176,7 +207,7 @@ noneDetails =
   }
 
 none :: FSItem Context
-none = FSItem None noneDetails Nothing
+none = FSItem None noneDetails Nothing []
 
 -- fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
@@ -196,13 +227,13 @@ dirAttach
   -> AFid
   -> UserName
   -> AccessName
-  -> Int
+  -> IndexInQids
   -> FSItem Context
   -> Context
   -> (Either NineError Qid, Context)
 dirAttach fid _ _ _ i d c =
   ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
-  , c {cFids = HashMap.insert fid 0 (cFids c)})
+  , c {cFids = HashMap.insert fid (FidState Nothing 0 []) (cFids c)})
 
 fdCreate
   :: Fid
@@ -215,35 +246,39 @@ fdCreate
 fdCreate _ _ _ _ _ context = (Left (ENotImplemented "fileCreate"), context)
 
 -- TODO check for permissions, etc
+-- TODO bug creating fid should happen in walk, not here
+-- TODO when opened for reading, create and add the TQueue here
 fileOpen
   :: Fid
   -> Mode
-  -> IndexInQids
+  -> FidState
   -> FSItem Context
   -> Context
   -> IO (Either NineError (Qid, IOUnit), Context)
-fileOpen fid _ i me c =
+fileOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
         ( Right
-            (Qid [NineP.File] ((dVersion . fDetails) me) (fromIntegral i), iounit)
-        , c {cFids = HashMap.insert fid i (cFids c)})
+            (Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState), iounit)
+        , c)
 
 -- TODO check for permissions, etc
+-- TODO bug creating fid should happen in walk, not here
+-- TODO when opened for reading, create and add the TQueue here
 dirOpen
   :: Fid
   -> Mode
-  -> IndexInQids
+  -> FidState
   -> FSItem Context
   -> Context
   -> IO (Either NineError (Qid, IOUnit), Context)
-dirOpen fid _ i me c =
+dirOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
         ( Right
-            ( Qid [NineP.Directory] ((dVersion . fDetails) me) (fromIntegral i)
+            ( Qid [NineP.Directory] ((dVersion . fDetails) me) (indexToQPath fidState)
             , iounit)
-        , c {cFids = HashMap.insert fid i (cFids c)})
+        , c)
 
 -- TODO check for permissions, iounit details, etc
 fileRead
@@ -269,16 +304,17 @@ dirRead fid offset len i me c = undefined
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid
-           -> Int
+           -> FidState
            -> FSItem Context
            -> Context
            -> (Maybe NineError, Context)
-fileRemove fid index _ c =
-  ( Nothing
-  , c
-    { cFids = HashMap.delete fid (cFids c)
-    , cFSItems = V.modify (\v -> DVM.write v index none) (cFSItems c)
-    })
+fileRemove fid fidState _ c =
+  let index = fidFSItemsIndex fidState
+  in ( Nothing
+     , c
+        { cFids = HashMap.delete fid (cFids c)
+        , cFSItems = V.modify (\v -> DVM.write v index none) (cFSItems c)
+        })
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
 readStat _ me context = ((Right . dStat . fDetails) me, context)
@@ -287,11 +323,11 @@ readStat _ me context = ((Right . dStat . fDetails) me, context)
 -- TODO allow more changes to stat as per the spec
 writeStat :: Fid
           -> Stat
-          -> Int
+          -> FidState
           -> FSItem Context
           -> Context
           -> (Maybe NineError, Context)
-writeStat _ stat index me c =
+writeStat _ stat fidState me c =
   let oldstat = (dStat . fDetails) me
       updatedStat =
         oldstat
@@ -308,6 +344,7 @@ writeStat _ stat index me c =
           --                         , stMuid   = !ByteString
         }
       newFSItem = me {fDetails = (fDetails me) {dStat = updatedStat}}
+      index = fidFSItemsIndex fidState
       updatedContext =
         c {cFSItems = V.modify (\v -> DVM.write v index newFSItem) (cFSItems c)}
   in (Nothing, updatedContext)
@@ -336,3 +373,14 @@ dirWalk
   -> Context
   -> (Either NineError [Qid], Context)
 dirWalk _ _ _ _ context = (Left (ENotImplemented "walk"), context)
+
+fileWalk
+  :: Fid
+  -> NewFid
+  -> [Text]
+  -> FSItem Context
+  -> Context
+  -> (Either NineError [Qid], Context)
+fileWalk _ _ _ _ context = (Left (ENotImplemented "walk"), context)
+-- TODO
+--         , c {cFids = HashMap.insert fid (FidState Nothing i []) (cFids c)})
