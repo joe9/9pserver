@@ -1,29 +1,29 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
 -- Stability   :  Ultra-Violence
 -- Portability :  I'm too young to die
 -- Listening on sockets for the incoming requests.
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Network.NineP.Server
   ( run9PServer
   ) where
 
-import           Control.Exception.Safe  hiding (handle)
-import           Data.ByteString         (ByteString)
-import           Protolude hiding (bracket, get, handle, msg)
-import qualified Data.ByteString         as BS
-import           Data.Serialize hiding (flush)
+import           Control.Concurrent.STM.TQueue
+import           Control.Exception.Safe        hiding (handle)
+import           Data.ByteString               (ByteString)
+import qualified Data.ByteString               as BS
+import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
 import           Network.Simple.TCP
-import           Network.Socket          (socketToHandle)
-import           System.IO               (BufferMode (NoBuffering),
-                                          Handle,
-                                          IOMode (ReadWriteMode),
-                                          hClose, hSetBuffering)
+import           Network.Socket                (socketToHandle)
+import           Protolude                     hiding (bracket, get,
+                                                handle, msg)
+import           System.IO                     (BufferMode (NoBuffering),
+                                                Handle,
+                                                IOMode (ReadWriteMode),
+                                                hClose, hSetBuffering)
 
 -- import Data.String.Conversions
 import           Data.NineP
@@ -41,20 +41,39 @@ run9PServer context = do
   serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
     putStrLn $ "TCP connection established from " ++ show remoteAddr
     clientConnection connectionSocket remoteAddr context
-    -- Now you may use connectionSocket as you please within this scope,
-    -- possibly using recv and send to interact with the remote end.
+-- Now you may use connectionSocket as you please within this scope,
+-- possibly using recv and send to interact with the remote end.
 
-clientConnection :: Socket -> t -> Context -> IO ()
+-- got this from
+-- https://github.com/glguy/irc-core/blob/v2/src/Client/Network/Async.hs#L152
+clientConnection :: Socket -> a -> Context -> IO ()
 clientConnection connectionSocket _ context =
-    bracket
-      (socketToHandle connectionSocket ReadWriteMode)
-      hClose
-      (\handle -> hSetBuffering handle NoBuffering >> receiver handle context)
+  bracket
+    (socketToHandle connectionSocket ReadWriteMode)
+    hClose
+    (\handle -> do
+       hSetBuffering handle NoBuffering
+       sendQ <- newTQueueIO
+       withAsync
+         (sendLoop handle sendQ)
+         (\sender -> do
+            withAsync
+              (eventLoop handle sendQ context)
+              (\receiver -> do
+                 result <- waitEitherCatch sender receiver
+                 case result of
+                   Left Right {} -> panic "PANIC: sendLoop returned"
+                   Right Right {} -> return ()
+                   Left (Left e) -> throw e
+                   Right (Left e) -> throw e)))
 
 -- TODO Should I even send this when I do not have a tag?
 sendErrorMessage :: Handle -> ByteString -> ByteString -> IO ()
 sendErrorMessage h s bs =
   BS.hPut h (toNinePFormat (Rerror (BS.concat [cs s, ": ", bs])) 0)
+
+toErrorMessage :: ByteString -> ByteString -> ByteString
+toErrorMessage s bs = toNinePFormat (Rerror (BS.concat [s, ": ", bs])) 0
 
 processMessage :: MT.TransmitMessageType
                -> Tag
@@ -62,15 +81,15 @@ processMessage :: MT.TransmitMessageType
                -> Context
                -> (ByteString, Context)
 processMessage MT.Tversion = process version
-processMessage MT.Tattach = process attach
-processMessage MT.Tclunk = process clunk
-processMessage MT.Tflush = process flush
-processMessage MT.Tremove = process remove
-processMessage MT.Tcreate = process create
-processMessage MT.Tstat = process rstat
-processMessage MT.Twstat = process wstat
-processMessage MT.Twalk = process walk
-processMessage _ = undefined
+processMessage MT.Tattach  = process attach
+processMessage MT.Tclunk   = process clunk
+processMessage MT.Tflush   = process flush
+processMessage MT.Tremove  = process remove
+processMessage MT.Tcreate  = process create
+processMessage MT.Tstat    = process rstat
+processMessage MT.Twstat   = process wstat
+processMessage MT.Twalk    = process walk
+processMessage _           = undefined
 
 -- TODO Not bothering with max string size.
 process
@@ -90,36 +109,29 @@ process f tag msg c =
         (Right m, cn) -> (toNinePFormat m tag, cn)
 
 -- TODO Not bothering with max string size.
-processRead
-  :: forall t a.
-     (ToNinePFormat a, Serialize t)
-  => (Tag -> t -> Context -> IO (Maybe (Either Rerror a), Context))
-  -> Tag
-  -> ByteString
-  -> Context
-  -> IO (Maybe ByteString, Context)
-processRead f tag msg c =
+scheduleRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Context
+scheduleRead q tag msg c = do
+  asyncValue <- async (processRead q tag msg c)
+  return (c {cBlockedReads = (BlockedRead tag asyncValue) : cBlockedReads c})
+
+-- TODO Not bothering with max string size.
+processRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Tag
+processRead q tag msg c =
   case runGet get msg of
-    Left e -> return (Just (toNinePFormat (Rerror (cs e)) tag), c)
+    Left e ->
+      atomically (writeTQueue q (toNinePFormat (Rerror (cs e)) tag)) >>
+      return tag
     Right d -> do
-      maybeResult <- f tag d c
-      case maybeResult of
-        (Nothing, cn) -> return (Nothing, cn)
-        (Just eitherResult, cn) -> do
-            case eitherResult of
-                Left e  -> return (Just (toNinePFormat e tag), cn)
-                Right m -> return (Just (toNinePFormat m tag), cn)
+      eitherResult <- read d c
+      case eitherResult of
+        Left e -> atomically (writeTQueue q (toNinePFormat e tag)) >> return tag
+        Right m ->
+          atomically (writeTQueue q (toNinePFormat m tag)) >> return tag
 
 processBlockedReads :: Context -> IO (ByteString, Context)
 processBlockedReads c = do
-   (tagDones,nc) <- checkBlockedReads c
-   return ((BS.concat . fmap (uncurry formatReadMessage)) tagDones, nc)
-
-formatReadMessage :: Tag -> Either Rerror Rread -> ByteString
-formatReadMessage tag eitherResult =
-    case eitherResult of
-        Left e  -> toNinePFormat e tag
-        Right m -> toNinePFormat m tag
+  (tagDones, nc) <- checkBlockedReads c
+  return ((BS.concat . fmap (uncurry toNinePFormat . swap)) tagDones, nc)
 
 -- TODO Not bothering with max string size.
 processIO
@@ -146,41 +158,64 @@ getMessageHeaders = do
   tag <- getWord16le
   return (MT.MkTransmitMessageType msgType, tag)
 
-receiver :: Handle -> Context -> IO () -- Context
-receiver handle context = do
+-- TODO could use a proper parser here
+-- could do as this
+-- https://github.com/glguy/irc-core/blob/v2/src/Client/EventLoop.hs#L73-L79
+-- (asum ( [fmap Input readTQueue q ] ++ mapM ( fmap Wait . wait . bAsync ) (cBlockedReads context)))
+-- if the input is made to a TQueue too
+-- do not feel the need for the input to be a TQueue now.
+-- eventLoop :: Handle -> TQueue ByteString -> TQueue ByteString -> Context -> IO () -- Context
+-- eventLoop handle input output context = do
+eventLoop :: Handle -> TQueue ByteString -> Context -> IO () -- Context
+eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
   case runGet getWord32le rawSize of
-    Left e -> sendErrorMessage handle (cs e) rawSize >> receiver handle context
+    Left e ->
+      atomically (writeTQueue sendQ (toErrorMessage (cs e) rawSize)) >>
+      furtherProcessing handle sendQ context
     Right wsize ->
       let size = fromIntegral wsize
       in if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
-           then receiver handle context
+           then furtherProcessing handle sendQ context
            else do
              message <- BS.hGet handle (size - 4)
              case runGetState getMessageHeaders message (size - 4) of
                Left e ->
-                 sendErrorMessage handle (cs e) message >> receiver handle context
+                 atomically (writeTQueue sendQ (toErrorMessage (cs e) message)) >>
+                 furtherProcessing handle sendQ context
                Right ((MT.Tread, tag), msgData) -> do
-                 (response, updatedContext) <-
-                       processRead read tag msgData context
-                 case response of
-                   Nothing -> receiver handle updatedContext
-                   Just r -> BS.hPut handle r >> receiver handle updatedContext
+                 updatedContext <- scheduleRead sendQ tag msgData context
+                 furtherProcessing handle sendQ updatedContext
                Right ((MT.Twrite, tag), msgData) -> do
                  (response, updatedContext) <-
-                       processIO write tag msgData context
-                 BS.hPut handle response >> receiver handle updatedContext
+                   processIO write tag msgData context
+                 atomically (writeTQueue sendQ response) >>
+                   furtherProcessing handle sendQ updatedContext
                Right ((MT.Topen, tag), msgData) -> do
                  (response, updatedContext) <-
-                       processIO open tag msgData context
-                 BS.hPut handle response >> receiver handle updatedContext
+                   processIO open tag msgData context
+                 atomically (writeTQueue sendQ response) >>
+                   furtherProcessing handle sendQ updatedContext
                Right ((msgType, tag), msgData) ->
                  let (response, updatedContext) =
                        processMessage msgType tag msgData context
-                 in BS.hPut handle response >> receiver handle updatedContext
+                 in atomically (writeTQueue sendQ response) >>
+                    furtherProcessing handle sendQ updatedContext
 
-furtherProcessing :: Handle -> Context -> IO ()
-furtherProcessing handle c = do
-  (response,nc) <- processBlockedReads c
-  BS.hPut handle response
-  receiver handle nc
+furtherProcessing :: Handle -> TQueue ByteString -> Context -> IO ()
+furtherProcessing handle sendQ c = do
+  (errorMessages, nc) <- processBlockedReads c
+  atomically (writeTQueue sendQ errorMessages)
+  eventLoop handle sendQ nc
+
+sendLoop :: Handle -> TQueue ByteString -> IO ()
+sendLoop handle q = do
+  bs <- atomically (readTQueue q)
+  BS.hPut handle bs
+  sendLoop handle q
+-- do not see a need for this yet
+-- receiveLoop :: Handle -> TQueue ByteString -> IO ()
+-- receiveLoop handle q = do
+--   bs <- BS.hGet handle 8196
+--   atomically (writeTQueue q bs)
+--   receiveLoop handle q

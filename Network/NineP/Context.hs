@@ -130,7 +130,7 @@ type FSItemsIndex = Int
 data Details s = Details
   { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
   , dWalk :: Fid -> NewFid -> [Text] -> FSItem s -> s -> (Either NineError [Qid], s)
-  , dRead :: Tag -> Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Maybe (Either NineError ByteString), s)
+  , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
@@ -150,9 +150,7 @@ data FidState = FidState
 
 data BlockedRead = BlockedRead
   { bTag :: Tag
-  , bAsync :: Async ByteString
-  , bFid :: Fid
-  , bFSItemIndex :: FSItemsIndex
+  , bAsync :: Async Tag
   }
 
 data Context = Context
@@ -214,14 +212,14 @@ dirDetails name =
 
 dirName :: RawFilePath -> RawFilePath
 dirName name
-  | isRelative name = error "dirName: directory name must be absolute"
+  | isRelative name = panic "dirName: directory name must be absolute"
   | name == "/" = name
   | hasTrailingPathSeparator name = name
   | otherwise = addTrailingPathSeparator name
 
 fileName :: RawFilePath -> RawFilePath
 fileName name
-  | isRelative name = error "fileName: file name must be absolute"
+  | isRelative name = panic "fileName: file name must be absolute"
   | hasTrailingPathSeparator name = dropTrailingPathSeparator name
   | otherwise = name
 
@@ -337,41 +335,28 @@ fileWrite fid offset bs fs@(FidState (Just q) i) me c = do
 -- TODO check for permissions, iounit details, etc
 -- TODO ignoring offset and count
 fileRead
-  :: Tag
-  -> Fid
+  :: Fid
   -> Offset
   -> Count
   -> FidState
   -> FSItem Context
   -> Context
-  -> IO (Maybe (Either NineError ByteString), Context)
-fileRead _ _ _ _ (FidState Nothing _) _ c = return (Just ((Left . OtherError) "No Queue to read from"), c)
-fileRead tag fid offset _ fs@(FidState (Just q) i) me c = do
-  value <- atomically (tryReadTQueue q)
-  case value of
-    Nothing -> do
-                asyncValue <- async (atomically (readTQueue q))
-                let blockedRead = BlockedRead tag asyncValue fid i
-                return (Nothing, c{cBlockedReads = blockedRead : (cBlockedReads c)})
-    Just bs -> return (Just (Right bs), c)
---   if BS.length bs > fromIntegral count
---     then do
---         let (sendBs, putBack) = BS.splitAt (fromIntegral count) bs
---         atomically (unGetTQueue q putBack)
---         return (Right sendBs, c)
---     else return (Right bs, c)
+  -> IO (Either NineError ByteString)
+fileRead _ _ _ (FidState Nothing _) _ c =
+  return ((Left . OtherError) "No Queue to read from")
+fileRead fid offset _ fs@(FidState (Just q) i) me c =
+  (fmap Right . atomically . readTQueue) q
 
 -- TODO check for permissions, iounit details, etc
 dirRead
-  :: Tag
-  -> Fid
+  :: Fid
   -> Offset
   -> Count
   -> FidState
   -> FSItem Context
   -> Context
-  -> IO (Maybe ( Either NineError ByteString), Context)
-dirRead tag fid offset count i me c = undefined
+  -> IO (Either NineError ByteString)
+dirRead fid offset count i me c = undefined
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid

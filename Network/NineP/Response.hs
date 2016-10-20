@@ -182,21 +182,38 @@ create (Tcreate fid name permissions mode) c =
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
 
-read :: Tag -> Tread -> Context -> IO (Maybe ( Either Rerror Rread), Context)
-read tag (Tread fid offset count) c =
+read :: Tread -> Context -> IO (Either Rerror Rread)
+read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
-    Nothing -> return (Just (rerror (ENoFile "fid cannot be found")), c)
+    Nothing -> return (rerror (ENoFile "fid cannot be found"))
     Just fds ->
         case (cFSItems c) V.!? (fidFSItemsIndex fds) of
-          Nothing -> return (Just (rerror EInval), c)
+          Nothing -> return (rerror EInval)
           Just d -> do
-            result <- ((dRead . fDetails) d) tag fid offset count fds d c
+            result <- ((dRead . fDetails) d) fid offset count fds d c
             case result of
-              (Nothing, cn) -> return (Nothing, cn)
-              (Just r, cn) -> do
-                case r of
-                    Left e  -> return (Just ( rerror e), cn)
-                    Right v -> return (Just ( (Right . Rread) v), cn)
+                    Left e  -> return (rerror e)
+                    Right v -> return ((Right . Rread) v)
+
+-- read1 :: TQueue ByteString -> Tag -> Tread -> Context -> IO (Maybe Rerror, Context)
+-- read1 sendQ tag (Tread fid offset count) c = undefined
+--   case HashMap.lookup fid (cFids c) of
+--     Nothing -> return (Just (rerror (ENoFile "fid cannot be found")), c)
+--     Just fds ->
+--         case (cFSItems c) V.!? (fidFSItemsIndex fds) of
+--           Nothing -> return (Just (rerror EInval), c)
+--           Just d -> do
+
+--                 asyncValue <- async (atomically (readTQueue q))
+
+-- sendRead = Async
+--             result <- ((dRead . fDetails) d) tag fid offset count fds d c
+--             case result of
+--               (Nothing, cn) -> return (Nothing, cn)
+--               (Just r, cn) -> do
+--                 case r of
+--                     Left e  -> return (Just ( rerror e), cn)
+--                     Right v -> return (Just ( (Right . Rread) v), cn)
 
 write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
 write (Twrite fid offset count) c =
@@ -256,19 +273,22 @@ write (Twrite fid offset count) c =
 --     Left  a -> checkedAsyncs ((tag,a) : stillPendings, completeds) xs
 --     Right r -> checkedAsyncs (stillPendings, (tag,r) : completeds) xs
 
-checkBlockedReads :: Context -> IO ([(Tag,Either Rerror Rread)],Context)
+checkBlockedReads :: Context -> IO ([(Tag,Rerror)],Context)
 checkBlockedReads c = do
   checkeds <- (mapM checkBlockedRead . cBlockedReads) c
   let (blockedReads, responses) = partitionEithers checkeds
-  return (responses,c{cBlockedReads = blockedReads})
+  return (catMaybes responses,c{cBlockedReads = blockedReads})
 
-checkBlockedRead :: BlockedRead -> IO (Either BlockedRead (Tag,Either Rerror Rread))
+checkBlockedRead :: BlockedRead -> IO (Either BlockedRead (Maybe (Tag,Rerror)))
 checkBlockedRead blockedRead = do
     v <- poll (bAsync blockedRead)
     case v of
+        -- still pending
         Nothing -> return (Left blockedRead)
-        (Just (Left e)) -> return (Right (bTag blockedRead, (rerror . OtherError . cs . show) e))
-        (Just (Right r)) -> return (Right (bTag blockedRead,(Right . Rread) r))
+        -- completed with an exception
+        (Just (Left e)) -> return (Right (Just (bTag blockedRead, (Rerror . showNineError . OtherError . cs . show) e)))
+        -- completed successfully
+        (Just (Right _)) -> return (Right Nothing)
 
 -- checkAsync :: Tag ->  Async ByteString -> IO (Tag,Either (Async ByteString) (Either Rerror Rread))
 -- checkAsync tag blockedReadAsync = do
