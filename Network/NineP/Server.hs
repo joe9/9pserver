@@ -110,24 +110,13 @@ processRead f tag msg c =
                 Left e  -> return (Just (toNinePFormat e tag), cn)
                 Right m -> return (Just (toNinePFormat m tag), cn)
 
-processWrite
-  :: (Twrite -> Context -> IO (Either Rerror (Rwrite,[(Tag,Either Rerror Rread)]), Context))
-  -> Tag
-  -> ByteString
-  -> Context
-  -> IO (ByteString, Context)
-processWrite f tag msg c =
-  case runGet get msg of
-    Left e -> return (toNinePFormat (Rerror (cs e)) tag, c)
-    Right d -> do
-      eitherResult <- f d c
-      case eitherResult of
-        (Left e, cn)  -> return (toNinePFormat e tag, cn)
-        (Right (w,rs), cn) ->
-          return (BS.concat (toNinePFormat w tag : (fmap (uncurry formatReadMessage . swap) rs)) , cn)
+processBlockedReads :: Context -> IO (ByteString, Context)
+processBlockedReads c = do
+   (tagDones,nc) <- checkBlockedReads c
+   return ((BS.concat . fmap (uncurry formatReadMessage)) tagDones, nc)
 
-formatReadMessage :: Either Rerror Rread -> Tag -> ByteString
-formatReadMessage eitherResult tag =
+formatReadMessage :: Tag -> Either Rerror Rread -> ByteString
+formatReadMessage tag eitherResult =
     case eitherResult of
         Left e  -> toNinePFormat e tag
         Right m -> toNinePFormat m tag
@@ -179,7 +168,7 @@ receiver handle context = do
                    Just r -> BS.hPut handle r >> receiver handle updatedContext
                Right ((MT.Twrite, tag), msgData) -> do
                  (response, updatedContext) <-
-                       processWrite write tag msgData context
+                       processIO write tag msgData context
                  BS.hPut handle response >> receiver handle updatedContext
                Right ((MT.Topen, tag), msgData) -> do
                  (response, updatedContext) <-
@@ -189,3 +178,9 @@ receiver handle context = do
                  let (response, updatedContext) =
                        processMessage msgType tag msgData context
                  in BS.hPut handle response >> receiver handle updatedContext
+
+furtherProcessing :: Handle -> Context -> IO ()
+furtherProcessing handle c = do
+  (response,nc) <- processBlockedReads c
+  BS.hPut handle response
+  receiver handle nc

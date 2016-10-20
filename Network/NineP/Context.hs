@@ -146,7 +146,13 @@ data Details s = Details
 data FidState = FidState
   { fidQueue               :: Maybe (TQueue ByteString)
   , fidFSItemsIndex        :: FSItemsIndex
-  , fidReadBlockedChildren :: [(Tag, Async ByteString)]
+  }
+
+data BlockedRead = BlockedRead
+  { bTag :: Tag
+  , bAsync :: Async ByteString
+  , bFid :: Fid
+  , bFSItemIndex :: FSItemsIndex
   }
 
 data Context = Context
@@ -155,6 +161,8 @@ data Context = Context
     -- representing the filesystem tree, with the root being the 0 always
   , cFSItems        :: Vector (FSItem Context)
   , cMaxMessageSize :: Int
+  , cBlockedReads :: [BlockedRead]
+
   }
 
 indexToQPath :: FidState -> Word64
@@ -162,7 +170,7 @@ indexToQPath = fromIntegral . fidFSItemsIndex
 
 -- TODO : Add to FileSystem
 initializeContext :: Context
-initializeContext = Context HashMap.empty V.empty 8196
+initializeContext = Context HashMap.empty V.empty 8196 []
 
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
@@ -268,7 +276,7 @@ dirAttach
   -> (Either NineError Qid, Context)
 dirAttach fid _ _ _ i d c =
   ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
-  , c {cFids = HashMap.insert fid (FidState Nothing 0 []) (cFids c)})
+  , c {cFids = HashMap.insert fid (FidState Nothing 0) (cFids c)})
 
 fdCreate
   :: Fid
@@ -320,9 +328,9 @@ dirOpen fid _ fidState me c =
        , c)
 
 fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
-fileWrite _ _ _ (FidState Nothing _ _) _ c =
+fileWrite _ _ _ (FidState Nothing _) _ c =
   return ((Left . OtherError) "No Queue to read from", c)
-fileWrite fid offset bs fs@(FidState (Just q) i as) me c = do
+fileWrite fid offset bs fs@(FidState (Just q) i) me c = do
   atomically (writeTQueue q bs)
   return ((Right . fromIntegral . BS.length) bs, c)
 
@@ -337,14 +345,14 @@ fileRead
   -> FSItem Context
   -> Context
   -> IO (Maybe (Either NineError ByteString), Context)
-fileRead _ _ _ _ (FidState Nothing _ _) _ c = return (Just ((Left . OtherError) "No Queue to read from"), c)
-fileRead tag fid offset _ fs@(FidState (Just q) i as) me c = do
+fileRead _ _ _ _ (FidState Nothing _) _ c = return (Just ((Left . OtherError) "No Queue to read from"), c)
+fileRead tag fid offset _ fs@(FidState (Just q) i) me c = do
   value <- atomically (tryReadTQueue q)
   case value of
     Nothing -> do
                 asyncValue <- async (atomically (readTQueue q))
-                let fs = fs{fidReadBlockedChildren = ( tag,asyncValue): as}
-                return (Nothing, c{cFids = HashMap.insert fid fs (cFids c)})
+                let blockedRead = BlockedRead tag asyncValue fid i
+                return (Nothing, c{cBlockedReads = blockedRead : (cBlockedReads c)})
     Just bs -> return (Just (Right bs), c)
 --   if BS.length bs > fromIntegral count
 --     then do
