@@ -4,19 +4,19 @@
 module Network.NineP.Context where
 
 import           Control.Concurrent.STM.TQueue
-import qualified Data.ByteString               as BS
-import           Data.HashMap.Strict           as HashMap
+import qualified Data.ByteString                  as BS
+import           Data.HashMap.Strict              as HashMap
 import           Data.List
-import           Data.NineP                    hiding (Directory)
-import qualified Data.NineP                    as NineP
+import           Data.NineP                       hiding (Directory)
+import qualified Data.NineP                       as NineP
 import           Data.String.Conversions
-import           Data.Vector                   (Vector)
-import qualified Data.Vector                   as V
-import           System.Posix.ByteString.FilePath
-import           System.Posix.FilePath
-import qualified Data.Vector.Mutable           as DVM
+import           Data.Vector                      (Vector)
+import qualified Data.Vector                      as V
+import qualified Data.Vector.Mutable              as DVM
 import           GHC.Show
 import           Protolude
+import           System.Posix.ByteString.FilePath
+import           System.Posix.FilePath
 import           Text.Groom
 
 import Network.NineP.Error
@@ -117,10 +117,12 @@ data FSItem s = FSItem
 
 instance Show (FSItem s) where
   show f =
-    unwords [groom (fType f)
-            , (groom . dVersion . fDetails) f
-            , (groom . dStat . fDetails) f
-            , groom (fOpenFids f)]
+    unwords
+      [ groom (fType f)
+      , (groom . dVersion . fDetails) f
+      , (groom . dStat . fDetails) f
+      , groom (fOpenFids f)
+      ]
 
 type IOUnit = Word32
 
@@ -144,12 +146,12 @@ data Details s = Details
   }
 
 data FidState = FidState
-  { fidQueue               :: Maybe (TQueue ByteString)
-  , fidFSItemsIndex        :: FSItemsIndex
+  { fidQueue        :: Maybe (TQueue ByteString)
+  , fidFSItemsIndex :: FSItemsIndex
   }
 
 data BlockedRead = BlockedRead
-  { bTag :: Tag
+  { bTag   :: Tag
   , bAsync :: Async Tag
   }
 
@@ -159,8 +161,7 @@ data Context = Context
     -- representing the filesystem tree, with the root being the 0 always
   , cFSItems        :: Vector (FSItem Context)
   , cMaxMessageSize :: Int
-  , cBlockedReads :: [BlockedRead]
-
+  , cBlockedReads   :: [BlockedRead]
   }
 
 indexToQPath :: FidState -> Word64
@@ -181,7 +182,7 @@ fileDetails name =
   { dOpen = fileOpen
   , dWalk = undefined -- fileWalk
   , dRead = fileRead
-  , dStat = nullStat{stName = fileName name}
+  , dStat = nullStat {stName = fileName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -198,7 +199,7 @@ dirDetails name =
   { dOpen = dirOpen
   , dWalk = dirWalk
   , dRead = dirRead
-  , dStat = nullStat{stName = dirName name}
+  , dStat = nullStat {stName = dirName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -252,12 +253,9 @@ none = FSItem None noneDetails []
 -- fileWalk = ENotADir
 -- fileRead :: Fid -> Offset -> Length -> s -> (Either NineError B.ByteString, s)
 -- fileRead _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-
 -- fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
 -- fileWrite fid offset bs (FidState _ i c)
-
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-
 fdClunk :: Fid -> FSItem Context -> Context -> (Maybe NineError, Context)
 fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
@@ -325,7 +323,14 @@ dirOpen fid _ fidState me c =
            , iounit)
        , c)
 
-fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
+fileWrite
+  :: Fid
+  -> Offset
+  -> ByteString
+  -> FidState
+  -> FSItem s
+  -> s
+  -> IO (Either NineError Count, s)
 fileWrite _ _ _ (FidState Nothing _) _ c =
   return ((Left . OtherError) "No Queue to read from", c)
 fileWrite fid offset bs fs@(FidState (Just q) i) me c = do
