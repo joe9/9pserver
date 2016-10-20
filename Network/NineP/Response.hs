@@ -59,13 +59,6 @@ version (Tversion s rversion) context =
 --     s <- getStat x
 --     return $ Qid (getQidTyp s) 0 42
 
--- withFSItem :: Vector (FSItem Context) -> Int -> Either NineError Qid
--- withFSItem :: Vector (FSItem t)
---                     -> Int
---                     -> (DirDetails t -> t1 -> (Either NineError b, t1))
---                     -> (FileDetails t -> t1 -> (Either NineError b, t1))
---                     -> (Either NineError (c -> (Either NineError b, c)))
-
 runEitherFunction :: (Either NineError a, t) -> (a -> b) -> (Either Rerror b, t)
 runEitherFunction f cf =
   case f of
@@ -131,9 +124,6 @@ remove (Tremove fid) c =
                         (((dRemove . fDetails) d) fid fds d c)
                         Rremove
 
--- open :: (Monad m, EmbedIO m) => NineFile m -> Nine m Qid
--- open f = do
---     makeQid $ f
 -- ropen (Msg _ t (Topen fid mode)) = do
 --     f <- lookup fid
 --     checkPerms f mode
@@ -195,26 +185,6 @@ read (Tread fid offset count) c =
                     Left e  -> return (rerror e)
                     Right v -> return ((Right . Rread) v)
 
--- read1 :: TQueue ByteString -> Tag -> Tread -> Context -> IO (Maybe Rerror, Context)
--- read1 sendQ tag (Tread fid offset count) c = undefined
---   case HashMap.lookup fid (cFids c) of
---     Nothing -> return (Just (rerror (ENoFile "fid cannot be found")), c)
---     Just fds ->
---         case (cFSItems c) V.!? (fidFSItemsIndex fds) of
---           Nothing -> return (Just (rerror EInval), c)
---           Just d -> do
-
---                 asyncValue <- async (atomically (readTQueue q))
-
--- sendRead = Async
---             result <- ((dRead . fDetails) d) tag fid offset count fds d c
---             case result of
---               (Nothing, cn) -> return (Nothing, cn)
---               (Just r, cn) -> do
---                 case r of
---                     Left e  -> return (Just ( rerror e), cn)
---                     Right v -> return (Just ( (Right . Rread) v), cn)
-
 write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
 write (Twrite fid offset count) c =
    case HashMap.lookup fid (cFids c) of
@@ -225,53 +195,6 @@ write (Twrite fid offset count) c =
           Just d -> do
             result <- ((dWrite . fDetails) d) fid offset count fds d c
             return (runEitherFunction result Rwrite)
-
--- write :: Twrite -> Context
---   -> IO (Either Rerror (Rwrite, [(Tag,Either Rerror Rread)]), Context)
--- write (Twrite fid offset count) c =
---   case HashMap.lookup fid (cFids c) of
---     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
---     Just fds ->
---         case (cFSItems c) V.!? (fidFSItemsIndex fds) of
---             Nothing -> return (rerror EInval, c)
---             Just d -> do
---                 result <- ((dWrite . fDetails) d) fid offset count fds d c
---                 case result of
---                     ( Left e, ulc ) -> return (rerror e, ulc)
---                     ( Right v, urc ) -> do
---                         (dones,nurc) <- reapAsyncs (fidFSItemsIndex fds) urc
---                         return (Right ((Rwrite v), dones), nurc)
-
--- reapAsyncs :: FSItemsIndex -> Context -> IO ([(Tag,Either Rerror Rread)], Context)
--- reapAsyncs i c =
---     case (cFSItems c) V.!? i of
---         Nothing -> return ([],c)
---         Just fsitem -> checkAsyncsOfFids [] c (fOpenFids fsitem)
-
--- checkAsyncsOfFids :: [(Tag,Either Rerror Rread)] -> Context -> [Fid]
---   -> IO ([(Tag,Either Rerror Rread)], Context)
--- checkAsyncsOfFids as c [] = return (as,c)
--- checkAsyncsOfFids as c (fid:openFids) = do
---   (dones, nc) <- checkAsyncsOfFid c fid
---   checkAsyncsOfFids dones nc openFids
-
--- checkAsyncsOfFid :: Context -> Fid -> IO ([(Tag,Either Rerror Rread)], Context)
--- checkAsyncsOfFid c openFid = do
---     case HashMap.lookup openFid (cFids c) of
---         Nothing -> return ([],c)
---         Just fidState -> do
---           checkedList <- (mapM (uncurry checkAsync) . fidReadBlockedChildren) fidState
---           let (pendings, dones) = checkedAsyncs ([],[]) checkedList
---           return (dones, c {cFids = HashMap.insert openFid fidState{fidReadBlockedChildren = pendings} (cFids c)})
-
--- checkedAsyncs :: ([(Tag,Async ByteString)], [(Tag,Either Rerror Rread)])
---   -> [(Tag,Either (Async ByteString) (Either Rerror Rread))]
---   -> ([(Tag,Async ByteString)], [(Tag,Either Rerror Rread)])
--- checkedAsyncs (stillPendings, completeds) [] = (stillPendings, completeds)
--- checkedAsyncs (stillPendings, completeds) ((tag,v) : xs) =
---   case v of
---     Left  a -> checkedAsyncs ((tag,a) : stillPendings, completeds) xs
---     Right r -> checkedAsyncs (stillPendings, (tag,r) : completeds) xs
 
 checkBlockedReads :: Context -> IO ([(Tag,Rerror)],Context)
 checkBlockedReads c = do
@@ -289,14 +212,6 @@ checkBlockedRead blockedRead = do
         (Just (Left e)) -> return (Right (Just (bTag blockedRead, (Rerror . showNineError . OtherError . cs . show) e)))
         -- completed successfully
         (Just (Right _)) -> return (Right Nothing)
-
--- checkAsync :: Tag ->  Async ByteString -> IO (Tag,Either (Async ByteString) (Either Rerror Rread))
--- checkAsync tag blockedReadAsync = do
---     v <- poll blockedReadAsync
---     case v of
---         Nothing -> return (tag,Left blockedReadAsync)
---         (Just (Left e)) -> return (tag,(Right . rerror) (OtherError (cs (show e))))
---         (Just (Right r)) -> return (tag,(Right . Right . Rread) r)
 
 rstat :: Tstat -> Context -> (Either Rerror Rstat, Context)
 rstat (Tstat fid ) c =

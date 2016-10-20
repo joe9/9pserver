@@ -68,10 +68,6 @@ clientConnection connectionSocket _ context =
                    Right (Left e) -> throw e)))
 
 -- TODO Should I even send this when I do not have a tag?
-sendErrorMessage :: Handle -> ByteString -> ByteString -> IO ()
-sendErrorMessage h s bs =
-  BS.hPut h (toNinePFormat (Rerror (BS.concat [cs s, ": ", bs])) 0)
-
 toErrorMessage :: ByteString -> ByteString -> ByteString
 toErrorMessage s bs = toNinePFormat (Rerror (BS.concat [s, ": ", bs])) 0
 
