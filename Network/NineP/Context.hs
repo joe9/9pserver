@@ -125,6 +125,25 @@ instance Show (FSItem s) where
       , groom (fOpenFids f)
       ]
 
+data FidState = FidState
+  { fidQueue        :: Maybe (TQueue ByteString)
+  , fidFSItemsIndex :: FSItemsIndex
+  }
+
+data BlockedRead = BlockedRead
+  { bTag   :: Tag
+  , bAsync :: Async Tag
+  }
+
+data Context = Context
+  { cFids           :: HashMap.HashMap Fid FidState
+    -- similar to an inode map,
+    -- representing the filesystem tree, with the root being the 0 always
+  , cFSItems        :: Vector (FSItem Context)
+  , cMaxMessageSize :: Int
+  , cBlockedReads   :: [BlockedRead]
+  }
+
 type IOUnit = Word32
 
 type FSItemsIndex = Int
@@ -144,25 +163,6 @@ data Details s = Details
   , dCreate :: Fid -> ByteString -> Permissions -> Mode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
   , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dVersion :: Word32
-  }
-
-data FidState = FidState
-  { fidQueue        :: Maybe (TQueue ByteString)
-  , fidFSItemsIndex :: FSItemsIndex
-  }
-
-data BlockedRead = BlockedRead
-  { bTag   :: Tag
-  , bAsync :: Async Tag
-  }
-
-data Context = Context
-  { cFids           :: HashMap.HashMap Fid FidState
-    -- similar to an inode map,
-    -- representing the filesystem tree, with the root being the 0 always
-  , cFSItems        :: Vector (FSItem Context)
-  , cMaxMessageSize :: Int
-  , cBlockedReads   :: [BlockedRead]
   }
 
 indexToQPath :: FidState -> Word64
