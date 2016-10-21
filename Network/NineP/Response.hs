@@ -7,6 +7,7 @@ import           Data.HashMap.Strict as HashMap
 import           Data.Maybe
 import           Data.String.Conversions
 import qualified Data.Vector         as V
+import qualified Data.ByteString         as BS
 import           Protolude hiding (show)
 import           GHC.Show
 
@@ -77,11 +78,19 @@ rerror = Left . Rerror . showNineError
 -- 0 == root directory path == index in cFSItems
 attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
 attach (Tattach fid afid uname aname) c =
-  -- validate fid
-  maybe (rerror EInval, c) f ((cFSItems c) V.!? 0)
-  where f d = runEitherFunction
-                 (((dAttach . fDetails) d) fid afid uname aname 0 d c)
-                 Rattach
+  -- if fid is already in use, error out
+  case HashMap.lookup fid (cFids c) of
+    Nothing ->
+        if aname == "/" || BS.null aname
+        then
+            let f d = runEitherFunction
+                            (((dAttach . fDetails) d) fid afid uname aname 0 d c)
+                            Rattach
+            in maybe (rerror (OtherError "attach: 0 attach point does not exist"), c)
+                    f
+                    ((cFSItems c) V.!? 0)
+        else (rerror (OtherError "attach: invalid attach point"), c)
+    Just _ -> (rerror (OtherError "fid already in use"), c)
 
 -- qid :: Vector (FSItem Context) -> Int -> Either NineError Qid
 -- qid v i =

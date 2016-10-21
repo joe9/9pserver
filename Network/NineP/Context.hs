@@ -188,7 +188,7 @@ fileDetails name =
   , dWrite = undefined
   , dClunk = fdClunk
   , dFlush = undefined
-  , dAttach = undefined
+  , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = fileRemove
   , dVersion = 0
@@ -272,7 +272,18 @@ dirAttach
   -> (Either NineError Qid, Context)
 dirAttach fid _ _ _ i d c =
   ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
-  , c {cFids = HashMap.insert fid (FidState Nothing 0) (cFids c)})
+  , c {cFids = HashMap.insert fid (FidState Nothing i) (cFids c)})
+
+fileAttach
+  :: Fid
+  -> AFid
+  -> UserName
+  -> AccessName
+  -> FSItemsIndex
+  -> FSItem Context
+  -> Context
+  -> (Either NineError Qid, Context)
+fileAttach _ _ _ _ _ _ c = (Left (OtherError "file cannot be attached") , c)
 
 fdCreate
   :: Fid
