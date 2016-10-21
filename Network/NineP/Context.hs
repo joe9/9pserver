@@ -283,7 +283,8 @@ fileAttach
   -> FSItem Context
   -> Context
   -> (Either NineError Qid, Context)
-fileAttach _ _ _ _ _ _ c = (Left (OtherError "file cannot be attached") , c)
+fileAttach _ _ _ _ _ _ c =
+  (Left (OtherError "fileAttach: file cannot be attached"), c)
 
 fdCreate
   :: Fid
