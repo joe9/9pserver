@@ -313,13 +313,26 @@ fileOpen
   -> FSItem Context
   -> Context
   -> IO (Either NineError (Qid, IOUnit), Context)
-fileOpen fid _ fidState me c =
-  let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
-  in return
-       ( Right
-           ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
-           , iounit)
-       , c)
+fileOpen fid mode fidState me c
+  | mode == 0 -- OREAD
+   = do
+    readQ <- newTQueueIO
+    return
+      ( Right
+          ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
+          , iounit)
+      , c
+        { cFids =
+            HashMap.insert fid (fidState {fidQueue = Just readQ}) (cFids c)
+        })
+  | otherwise =
+    return
+      ( Right
+          ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
+          , iounit)
+      , c)
+  where
+    iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
 
 -- TODO check for permissions, etc
 -- TODO bug creating fid should happen in walk, not here
