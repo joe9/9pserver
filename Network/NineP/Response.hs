@@ -243,7 +243,19 @@ wstat (Twstat fid stat) c =
                 Rwstat
 
 walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)
-walk (Twalk fid newfid nwnames) c = undefined
+walk (Twalk fid newfid nwnames) c
+  | isJust (HashMap.lookup newfid (cFids c)) && fid /= newfid =
+    (rerror (OtherError "walk: proposed newfid is already in use"), c)
+  | otherwise =
+       case HashMap.lookup fid (cFids c) of
+          Nothing -> (rerror (OtherError "walk: invalid fid"), c)
+          Just fds ->
+             let f d =
+                    runEitherFunction (((dWalk . fDetails) d) fid newfid nwnames fds d c) Rwalk
+             in maybe (rerror (OtherError "walk: invalid FSItemsIndex"), c)
+                      f
+                      ((cFSItems c) V.!? (fidFSItemsIndex fds))
+
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
 --     let fixDirBit = (case f of

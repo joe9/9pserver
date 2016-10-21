@@ -7,8 +7,6 @@ import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.HashMap.Strict              as HashMap
 import           Data.List
-import           Data.NineP                       hiding (Directory)
-import qualified Data.NineP                       as NineP
 import           Data.String.Conversions
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
@@ -18,6 +16,9 @@ import           Protolude
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
 import           Text.Groom
+
+import           Data.NineP hiding (Directory, File)
+import qualified Data.NineP as NineP
 
 import Network.NineP.Error
 
@@ -131,7 +132,7 @@ type FSItemsIndex = Int
 -- TODO add name
 data Details s = Details
   { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
-  , dWalk :: Fid -> NewFid -> [Text] -> FSItem s -> s -> (Either NineError [Qid], s)
+  , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
   , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
@@ -167,6 +168,12 @@ data Context = Context
 indexToQPath :: FidState -> Word64
 indexToQPath = fromIntegral . fidFSItemsIndex
 
+fsItemToQType :: FSItem Context -> QType
+fsItemToQType fsitem
+  | fType fsitem == Directory = NineP.Directory
+  | fType fsitem == File = NineP.File
+  | otherwise = NineP.File
+
 -- TODO : Add to FileSystem
 initializeContext :: Context
 initializeContext = Context HashMap.empty V.empty 8196 []
@@ -180,7 +187,7 @@ fileDetails, dirDetails :: RawFilePath -> Details Context
 fileDetails name =
   Details
   { dOpen = fileOpen
-  , dWalk = undefined -- fileWalk
+  , dWalk = fdWalk
   , dRead = fileRead
   , dStat = nullStat {stName = fileName name}
   , dReadStat = readStat
@@ -197,7 +204,7 @@ fileDetails name =
 dirDetails name =
   Details
   { dOpen = dirOpen
-  , dWalk = dirWalk
+  , dWalk = fdWalk
   , dRead = dirRead
   , dStat = nullStat {stName = dirName name}
   , dReadStat = readStat
@@ -439,22 +446,57 @@ nullStat =
   , stMuid = ""
   }
 
-dirWalk
+-- TODO implement ".." - walk to the parent directory
+fdWalk
   :: Fid
   -> NewFid
-  -> [Text]
+  -> [ByteString]
+  -> FidState
   -> FSItem Context
   -> Context
   -> (Either NineError [Qid], Context)
-dirWalk _ _ _ _ context = (Left (ENotImplemented "walk"), context)
+fdWalk fid newfid nwnames fidState d c
+  | V.length fsItems > 1 =
+    ( Left
+        (OtherError
+           (BS.append
+              "dirWalk: Multiple FSItems with the same name found"
+              (joinPath nwnames)))
+    , c)
+  | V.length fsItems == 0 =
+    let qids =
+          (catMaybes . fmap (buildQid (cFSItems c)) . scanl combine fidName)
+            nwnames
+    in (Right qids, c)
+  | otherwise =
+    let qids =
+          (catMaybes . fmap (buildQid (cFSItems c)) . scanl combine fidName)
+            nwnames
+    in ( Right qids
+       , c
+         { cFids =
+             HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)
+         })
+  where
+    fidName = (stName . dStat . fDetails) d
+    fsItems =
+      V.findIndices (hasName (combine fidName (joinPath nwnames))) (cFSItems c)
+    fsItemIndex = V.head fsItems
+    fsItem = fromMaybe d ((cFSItems c) V.!? fsItemIndex)
 
-fileWalk
-  :: Fid
-  -> NewFid
-  -> [Text]
-  -> FSItem Context
-  -> Context
-  -> (Either NineError [Qid], Context)
-fileWalk _ _ _ _ context = (Left (ENotImplemented "walk"), context)
--- TODO
---         , c {cFids = HashMap.insert fid (FidState Nothing i []) (cFids c)})
+buildQid :: Vector (FSItem Context) -> RawFilePath -> Maybe Qid
+buildQid fsItems path =
+  V.findIndex (hasName path) fsItems >>=
+  (\fsItemIndex ->
+     (fsItems V.!? fsItemIndex) >>= \fsitem ->
+       Just
+         (Qid
+            [fsItemToQType fsitem]
+            ((dVersion . fDetails) fsitem)
+            (fromIntegral fsItemIndex)))
+
+hasName :: RawFilePath -> FSItem Context -> Bool
+hasName name fsitem =
+  let normalizedName = joinPath (splitDirectories name)
+  in normalizedName == (stName . dStat . fDetails) fsitem ||
+     (BS.append normalizedName "/") == (stName . dStat . fDetails) fsitem
