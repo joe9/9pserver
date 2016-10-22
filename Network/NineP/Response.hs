@@ -19,15 +19,15 @@ import           Network.NineP.Error
 -- assuming that the length of bytestring will be the same as that of
 -- Text for calculating msize using T.length
 version :: Tversion -> Context -> (Either Rerror Rversion, Context)
-version (Tversion s rversion) context =
-  let protoVersion = validateNineVersion rversion
-      newSize = max (fromIntegral s) (cMaxMessageSize context)
+version (Tversion s tversion) context =
+  let newSize = max (fromIntegral s) (cMaxMessageSize context)
       updatedContext =
-        if protoVersion == VerUnknown
+        if tversion == VerUnknown
           then context {cMaxMessageSize = newSize}
           else (resetContext context) {cMaxMessageSize = newSize}
-  in ( (Right . Rversion (fromIntegral newSize)) (showNineVersion protoVersion)
+  in ( (Right . Rversion (fromIntegral newSize)) tversion
      , updatedContext)
+
 -- below for debugging
 -- version :: Tversion -> Context -> (Either Rerror Rversion, Context)
 -- version (Tversion s rversion) context =
@@ -225,8 +225,8 @@ checkBlockedRead blockedRead = do
     -- completed successfully
     (Just (Right _)) -> return (Right Nothing)
 
-rstat :: Tstat -> Context -> (Either Rerror Rstat, Context)
-rstat (Tstat fid) c =
+stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+stat (Tstat fid) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
     Just fds ->

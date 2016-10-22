@@ -7,6 +7,7 @@ import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.HashMap.Strict              as HashMap
 import           Data.List
+import           Data.Default
 import           Data.Serialize
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
@@ -24,21 +25,6 @@ import           Data.NineP.Stat  hiding (Directory)
 import qualified Data.NineP.Stat  as Stat
 
 import Network.NineP.Error
-
-data NineVersion
-  = VerUnknown
-  | Ver9P2000
-  deriving (Eq)
-
-showNineVersion :: NineVersion -> ByteString
-showNineVersion Ver9P2000  = "9P2000"
-showNineVersion VerUnknown = "unknown"
-
-validateNineVersion :: ByteString -> NineVersion
-validateNineVersion s =
-  if BS.isPrefixOf "9P2000" s
-    then Ver9P2000
-    else VerUnknown
 
 -- <joe9> I am not storing any data in the filesystem. Even if I do, it is not more than a line.
 -- <joe9> I am implementing a 9P server. This entails serving an in-memory filesystem (synthetic filesystem)  [21:04]
@@ -175,8 +161,22 @@ fsItemToQType fsitem
   | otherwise = QType.File
 
 -- TODO : Add to FileSystem
-initializeContext :: Context
-initializeContext = Context HashMap.empty V.empty 8192 []
+instance Default Context where
+--   def = Context HashMap.empty V.empty 8192 []
+  def = Context HashMap.empty sampleFSItemsList 8192 []
+
+sampleFSItemsList :: V.Vector (FSItem Context)
+sampleFSItemsList =
+  V.fromList
+    [ sampleDir "/" 0
+    , sampleFile "/in" 1
+    , sampleFile "/out" 2
+    ]
+
+sampleDir , sampleFile :: RawFilePath -> FSItemsIndex -> FSItem Context
+sampleDir name index = FSItem Directory (dirDetails name index) []
+
+sampleFile name index = FSItem File (fileDetails name index) []
 
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}

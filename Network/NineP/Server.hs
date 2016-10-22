@@ -86,7 +86,7 @@ processMessage MT.Tclunk   = process clunk
 processMessage MT.Tflush   = process flush
 processMessage MT.Tremove  = process remove
 processMessage MT.Tcreate  = process create
-processMessage MT.Tstat    = process rstat
+processMessage MT.Tstat    = process stat
 processMessage MT.Twstat   = process wstat
 processMessage MT.Twalk    = process walk
 processMessage _           = undefined
@@ -104,7 +104,7 @@ process f tag msg c =
   case runGet get msg of
     Left e -> (toNinePFormat (Rerror (cs e)) tag, c)
     Right d ->
-      let result = f (traceShow d d) c
+      let result = f (traceShowId d) c
       in case traceShow (fst result) result of
             (Left e, cn)  -> (toNinePFormat e tag, cn)
             (Right m, cn) -> (toNinePFormat m tag, cn)
@@ -170,24 +170,19 @@ getMessageHeaders = do
 eventLoop :: Handle -> TQueue ByteString -> Context -> IO () -- Context
 eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
-  putStrLn ("rawSize hGet received " ++ show (BS.length rawSize) ++ " bytes")
-  case runGet getWord32le rawSize of
+  case runGet getWord32le (traceShowId rawSize) of
     Left e ->
-      putStrLn ("processing error of rawSize: " ++ show rawSize ++ ", error: " ++ e) >>
-      atomically (writeTQueue sendQ (toErrorMessage (cs e) rawSize)) >>
+      atomically (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) rawSize)) >>
       furtherProcessing handle sendQ context
     Right wsize -> do
-      putStrLn ("rawSize: " ++ show wsize)
-      let size = fromIntegral wsize
+      let size = fromIntegral (traceShowId wsize)
       if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
            then furtherProcessing handle sendQ context
            else do
              message <- BS.hGet handle (size - 4)
-             putStrLn ("message hGet received " ++ show (BS.length message) ++ " bytes")
-             case runGetState getMessageHeaders message 0 of
+             case runGetState getMessageHeaders (traceShowId message) 0 of
                Left e ->
-                 putStrLn ("getMessageHeaders error : " ++ e) >>
-                 atomically (writeTQueue sendQ (toErrorMessage (cs e) message)) >>
+                 atomically (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
                  furtherProcessing handle sendQ context
                Right ((MT.Tread, tag), msgData) -> do
                  updatedContext <- scheduleRead sendQ tag msgData context
@@ -220,11 +215,7 @@ furtherProcessing handle sendQ c = do
 sendLoop :: Handle -> TQueue ByteString -> IO ()
 sendLoop handle q = do
   bs <- atomically (readTQueue q)
-  BS.putStrLn bs
-  (putStrLn :: Base.String -> IO ()) (cs bs)
-  putStrLn ( "read bytes in sendLoop" ++ show (BS.length bs))
   BS.hPutNonBlocking handle bs
-  putStrLn ( "sending bytes in sendLoop" ++ show (BS.length bs))
   hFlush handle
   flushAll
   sendLoop handle q
