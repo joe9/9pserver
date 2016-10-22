@@ -17,8 +17,12 @@ import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
 import           Text.Groom
 
-import           Data.NineP hiding (Directory, File)
-import qualified Data.NineP as NineP
+import           Data.NineP
+import qualified Data.NineP       as NineP
+import           Data.NineP.QType hiding (Directory, File)
+import qualified Data.NineP.QType as QType
+import           Data.NineP.Stat  hiding (Directory, File)
+import qualified Data.NineP.Stat  as Stat
 
 import Network.NineP.Error
 
@@ -125,6 +129,8 @@ instance Show (FSItem s) where
       , groom (fOpenFids f)
       ]
 
+type FSItemsIndex = Int
+
 data FidState = FidState
   { fidQueue        :: Maybe (TQueue ByteString)
   , fidFSItemsIndex :: FSItemsIndex
@@ -146,8 +152,6 @@ data Context = Context
 
 type IOUnit = Word32
 
-type FSItemsIndex = Int
-
 -- TODO add name
 data Details s = Details
   { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
@@ -165,31 +169,28 @@ data Details s = Details
   , dVersion :: Word32
   }
 
-indexToQPath :: FidState -> Word64
-indexToQPath = fromIntegral . fidFSItemsIndex
-
 fsItemToQType :: FSItem Context -> QType
 fsItemToQType fsitem
-  | fType fsitem == Directory = NineP.Directory
-  | fType fsitem == File = NineP.File
-  | otherwise = NineP.File
+  | fType fsitem == Directory = QType.Directory
+  | fType fsitem == File = QType.File
+  | otherwise = QType.File
 
 -- TODO : Add to FileSystem
 initializeContext :: Context
-initializeContext = Context HashMap.empty V.empty 8196 []
+initializeContext = Context HashMap.empty V.empty 8192 []
 
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
 
 -- TODO need some validation to ensure that the parent directory exists
 -- name is an absolute path
-fileDetails, dirDetails :: RawFilePath -> Details Context
-fileDetails name =
+fileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details Context
+fileDetails name index =
   Details
   { dOpen = fileOpen
   , dWalk = fdWalk
   , dRead = fileRead
-  , dStat = nullStat {stName = fileName name}
+  , dStat = (fileStat index) {stName = fileName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -201,12 +202,12 @@ fileDetails name =
   , dVersion = 0
   }
 
-dirDetails name =
+dirDetails name index =
   Details
   { dOpen = dirOpen
   , dWalk = fdWalk
   , dRead = dirRead
-  , dStat = nullStat {stName = dirName name}
+  , dStat = (dirStat index) {stName = dirName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -278,7 +279,7 @@ dirAttach
   -> Context
   -> (Either NineError Qid, Context)
 dirAttach fid _ _ _ i d c =
-  ( Right (Qid [NineP.Directory] ((dVersion . fDetails) d) (fromIntegral i))
+  ( Right (Qid [QType.Directory] ((dVersion . fDetails) d) (fromIntegral i))
   , c {cFids = HashMap.insert fid (FidState Nothing i) (cFids c)})
 
 fileAttach
@@ -319,7 +320,7 @@ fileOpen fid mode fidState me c
     readQ <- newTQueueIO
     return
       ( Right
-          ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
+          ( Qid [QType.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c
         { cFids =
@@ -328,7 +329,7 @@ fileOpen fid mode fidState me c
   | otherwise =
     return
       ( Right
-          ( Qid [NineP.File] ((dVersion . fDetails) me) (indexToQPath fidState)
+          ( Qid [QType.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c)
   where
@@ -349,9 +350,9 @@ dirOpen fid _ fidState me c =
   in return
        ( Right
            ( Qid
-               [NineP.Directory]
+               [QType.Directory]
                ((dVersion . fDetails) me)
-               (indexToQPath fidState)
+               (fidFSItemsIndex fidState)
            , iounit)
        , c)
 
@@ -443,20 +444,90 @@ writeStat _ stat fidState me c =
         c {cFSItems = V.modify (\v -> DVM.write v index newFSItem) (cFSItems c)}
   in (Nothing, updatedContext)
 
-nullStat :: Stat
-nullStat =
+
+dirStat, fileStat :: FSItemsIndex -> Stat
+dirStat = initialStat QType.Directory
+fileStat = initialStat QType.File
+
+initialStat :: QType -> FSItemsIndex -> Stat
+initialStat QType.Directory index =
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [] 0 0
-  , stMode = 0
+  , stQid = Qid [QType.Directory,QType.AppendOnlyFile] 0 index
+  , stMode =
+      [ OtherExecutePermission
+      , OtherWritePermission
+      , OtherReadPermission
+      , GroupExecutePermission
+      , GroupWritePermission
+      , GroupReadPermission
+      , UserExecutePermission
+      , UserWritePermission
+      , UserReadPermission
+      , AppendOnly
+      , Stat.Directory
+      ]
   , stAtime = 0
   , stMtime = 0
   , stLength = 0
   , stName = ""
-  , stUid = ""
-  , stGid = ""
-  , stMuid = ""
+  , stUid = "root"
+  , stGid = "root"
+  , stMuid = "root"
+  }
+initialStat QType.File index =
+  Stat
+  { stTyp = 0
+  , stDev = 0
+  , stQid = Qid [QType.File,QType.AppendOnlyFile] 0 index
+  , stMode =
+      [ OtherExecutePermission
+      , OtherWritePermission
+      , OtherReadPermission
+      , GroupExecutePermission
+      , GroupWritePermission
+      , GroupReadPermission
+      , UserExecutePermission
+      , UserWritePermission
+      , UserReadPermission
+      , AppendOnly
+      ]
+  , stAtime = 0
+  , stMtime = 0
+  , stLength = 0
+  , stName = ""
+  , stUid = "root"
+  , stGid = "root"
+  , stMuid = "root"
+  }
+initialStat _ index = nullStat index
+
+nullStat :: FSItemsIndex -> Stat
+nullStat index =
+  Stat
+  { stTyp = 0
+  , stDev = 0
+  , stQid = Qid [QType.AppendOnlyFile] 0 index
+  , stMode =
+      [ OtherExecutePermission
+      , OtherWritePermission
+      , OtherReadPermission
+      , GroupExecutePermission
+      , GroupWritePermission
+      , GroupReadPermission
+      , UserExecutePermission
+      , UserWritePermission
+      , UserReadPermission
+      , AppendOnly
+      ]
+  , stAtime = 0
+  , stMtime = 0
+  , stLength = 0
+  , stName = ""
+  , stUid = "root"
+  , stGid = "root"
+  , stMuid = "root"
   }
 
 -- TODO implement ".." - walk to the parent directory

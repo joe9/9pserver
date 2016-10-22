@@ -212,6 +212,6 @@ sendLoop handle q = do
 -- do not see a need for this yet
 -- receiveLoop :: Handle -> TQueue ByteString -> IO ()
 -- receiveLoop handle q = do
---   bs <- BS.hGet handle 8196
+--   bs <- BS.hGet handle 8192
 --   atomically (writeTQueue q bs)
 --   receiveLoop handle q

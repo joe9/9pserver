@@ -74,13 +74,14 @@ runMaybeFunction f cf =
 rerror :: NineError -> Either Rerror b
 rerror = Left . Rerror . showNineError
 
+-- Not checking if afid == (u32int)~0, just not authenticating for all
 -- 0 == root directory path == index in cFSItems
 -- if fid is already in use, error out
 attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
 attach (Tattach fid afid uname aname) c =
   case HashMap.lookup fid (cFids c) of
     Nothing ->
-      if aname == "/" || BS.null aname
+      if aname == "/" || BS.null aname || fid == 0
         then let f d =
                    runEitherFunction
                      (((dAttach . fDetails) d) fid afid uname aname 0 d c)
