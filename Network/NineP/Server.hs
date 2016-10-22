@@ -16,14 +16,16 @@ import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
 import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
+import           qualified GHC.Show as Show
+import           qualified GHC.Base as Base
 import           Network.Simple.TCP
 import           Network.Socket                (socketToHandle)
 import           Protolude                     hiding (bracket, get,
                                                 handle, msg)
-import           System.IO                     (BufferMode (NoBuffering),
+import           System.IO                     (BufferMode (NoBuffering,BlockBuffering),
                                                 Handle,
                                                 IOMode (ReadWriteMode),
-                                                hClose, hSetBuffering)
+                                                hClose, hSetBuffering, hFlush)
 
 -- import Data.String.Conversions
 import           Data.NineP
@@ -38,6 +40,8 @@ import Network.NineP.Response
 -- TODO move the below socket stuff to the Context
 run9PServer :: Context -> IO ()
 run9PServer context = do
+  hSetBuffering stdout NoBuffering
+  hSetBuffering stderr NoBuffering
   serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
     putStrLn $ "TCP connection established from " ++ show remoteAddr
     clientConnection connectionSocket remoteAddr context
@@ -52,7 +56,7 @@ clientConnection connectionSocket _ context =
     (socketToHandle connectionSocket ReadWriteMode)
     hClose
     (\handle -> do
-       hSetBuffering handle NoBuffering
+       hSetBuffering handle (BlockBuffering (Just (cMaxMessageSize context)))
        sendQ <- newTQueueIO
        withAsync
          (sendLoop handle sendQ)
@@ -90,7 +94,7 @@ processMessage _           = undefined
 -- TODO Not bothering with max string size.
 process
   :: forall t a.
-     (ToNinePFormat a, Serialize t)
+     (ToNinePFormat a, Serialize t, Show t, Show a)
   => (t -> Context -> (Either Rerror a, Context))
   -> Tag
   -> ByteString
@@ -100,9 +104,10 @@ process f tag msg c =
   case runGet get msg of
     Left e -> (toNinePFormat (Rerror (cs e)) tag, c)
     Right d ->
-      case f d c of
-        (Left e, cn)  -> (toNinePFormat e tag, cn)
-        (Right m, cn) -> (toNinePFormat m tag, cn)
+      let result = f (traceShow d d) c
+      in case traceShow (fst result) result of
+            (Left e, cn)  -> (toNinePFormat e tag, cn)
+            (Right m, cn) -> (toNinePFormat m tag, cn)
 
 -- TODO Not bothering with max string size.
 scheduleRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Context
@@ -165,18 +170,23 @@ getMessageHeaders = do
 eventLoop :: Handle -> TQueue ByteString -> Context -> IO () -- Context
 eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
+  putStrLn ("rawSize hGet received " ++ show (BS.length rawSize) ++ " bytes")
   case runGet getWord32le rawSize of
     Left e ->
+      putStrLn ("processing error of rawSize: " ++ show rawSize ++ ", error: " ++ e) >>
       atomically (writeTQueue sendQ (toErrorMessage (cs e) rawSize)) >>
       furtherProcessing handle sendQ context
-    Right wsize ->
+    Right wsize -> do
+      putStrLn ("rawSize: " ++ show wsize)
       let size = fromIntegral wsize
-      in if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
+      if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
            then furtherProcessing handle sendQ context
            else do
              message <- BS.hGet handle (size - 4)
-             case runGetState getMessageHeaders message (size - 4) of
+             putStrLn ("message hGet received " ++ show (BS.length message) ++ " bytes")
+             case runGetState getMessageHeaders message 0 of
                Left e ->
+                 putStrLn ("getMessageHeaders error : " ++ e) >>
                  atomically (writeTQueue sendQ (toErrorMessage (cs e) message)) >>
                  furtherProcessing handle sendQ context
                Right ((MT.Tread, tag), msgData) -> do
@@ -195,23 +205,36 @@ eventLoop handle sendQ context = do
                Right ((msgType, tag), msgData) ->
                  let (response, updatedContext) =
                        processMessage msgType tag msgData context
-                 in atomically (writeTQueue sendQ response) >>
-                    furtherProcessing handle sendQ updatedContext
+                 in putStrLn ("msgType: " ++ cs (MT.showTransmitMessageType msgType) ++ ", Tag: " ++ show tag ++ ", response: " ++ cs response) >>
+                        flushAll >>
+                        atomically (writeTQueue sendQ response) >>
+                        furtherProcessing handle sendQ updatedContext
 
 furtherProcessing :: Handle -> TQueue ByteString -> Context -> IO ()
 furtherProcessing handle sendQ c = do
   (errorMessages, nc) <- processBlockedReads c
   atomically (writeTQueue sendQ errorMessages)
+  flushAll
   eventLoop handle sendQ nc
 
 sendLoop :: Handle -> TQueue ByteString -> IO ()
 sendLoop handle q = do
   bs <- atomically (readTQueue q)
-  BS.hPut handle bs
+  BS.putStrLn bs
+  (putStrLn :: Base.String -> IO ()) (cs bs)
+  putStrLn ( "read bytes in sendLoop" ++ show (BS.length bs))
+  BS.hPutNonBlocking handle bs
+  putStrLn ( "sending bytes in sendLoop" ++ show (BS.length bs))
+  hFlush handle
+  flushAll
   sendLoop handle q
+
 -- do not see a need for this yet
 -- receiveLoop :: Handle -> TQueue ByteString -> IO ()
 -- receiveLoop handle q = do
 --   bs <- BS.hGet handle 8192
 --   atomically (writeTQueue q bs)
 --   receiveLoop handle q
+
+flushAll :: IO ()
+flushAll = hFlush stdout >> hFlush stderr

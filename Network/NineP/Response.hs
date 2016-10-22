@@ -21,16 +21,18 @@ import           Network.NineP.Error
 version :: Tversion -> Context -> (Either Rerror Rversion, Context)
 version (Tversion s rversion) context =
   let protoVersion = validateNineVersion rversion
-      newSize =
-        if fromIntegral s > cMaxMessageSize updatedContext
-          then fromIntegral s
-          else cMaxMessageSize updatedContext
+      newSize = max (fromIntegral s) (cMaxMessageSize context)
       updatedContext =
         if protoVersion == VerUnknown
           then context {cMaxMessageSize = newSize}
           else (resetContext context) {cMaxMessageSize = newSize}
   in ( (Right . Rversion (fromIntegral newSize)) (showNineVersion protoVersion)
      , updatedContext)
+-- below for debugging
+-- version :: Tversion -> Context -> (Either Rerror Rversion, Context)
+-- version (Tversion s rversion) context =
+--   ( (Right . Rversion (fromIntegral 8192)) "9P2000"
+--      , context)
 
 -- checkPerms :: (Monad m, EmbedIO m) => NineFile m -> Word8 -> Nine m ()
 -- checkPerms f want = do

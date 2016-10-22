@@ -7,11 +7,12 @@ import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.HashMap.Strict              as HashMap
 import           Data.List
+import           Data.Serialize
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Mutable              as DVM
 import           GHC.Show
-import           Protolude
+import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
 import           Text.Groom
@@ -318,7 +319,10 @@ fileOpen fid mode fidState me c
     readQ <- newTQueueIO
     return
       ( Right
-          ( Qid [QType.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
+          ( Qid
+              [QType.File]
+              ((dVersion . fDetails) me)
+              (fidFSItemsIndex fidState)
           , iounit)
       , c
         { cFids =
@@ -327,7 +331,10 @@ fileOpen fid mode fidState me c
   | otherwise =
     return
       ( Right
-          ( Qid [QType.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
+          ( Qid
+              [QType.File]
+              ((dVersion . fDetails) me)
+              (fidFSItemsIndex fidState)
           , iounit)
       , c)
   where
@@ -352,7 +359,10 @@ dirOpen fid _ fidState me c =
                ((dVersion . fDetails) me)
                (fidFSItemsIndex fidState)
            , iounit)
-       , c)
+      , c
+        { cFids =
+            HashMap.insert fid (fidState {fidQueue = Nothing}) (cFids c)
+        })
 
 fileWrite
   :: Fid
@@ -380,7 +390,7 @@ fileRead
   -> IO (Either NineError ByteString)
 fileRead _ _ _ (FidState Nothing _) _ c =
   return ((Left . OtherError) "No Queue to read from")
-fileRead fid offset _ fs@(FidState (Just q) i) me c =
+fileRead _ _ _ (FidState (Just q) _) _ _ =
   (fmap Right . atomically . readTQueue) q
 
 -- TODO check for permissions, iounit details, etc
@@ -392,7 +402,22 @@ dirRead
   -> FSItem Context
   -> Context
   -> IO (Either NineError ByteString)
-dirRead fid offset count i me c = undefined
+dirRead _ _ _ _ fsItem c =
+  let fsItems = cFSItems c
+      -- remove the trailing slash of the directory
+      dirname = (takeDirectory . stName . dStat . fDetails) fsItem
+      childrenStats =
+        (V.map (dStat . fDetails) . V.filter (belongsToDir dirname)) fsItems
+      childrenStatsBS = V.map (runPut . put) childrenStats
+  in (return . Right . BS.concat . V.toList) childrenStatsBS
+
+belongsToDir :: RawFilePath -> FSItem Context -> Bool
+belongsToDir fp fsItem
+  | fType fsItem == Directory =
+    fp == (takeDirectory . takeDirectory . stName . dStat . fDetails) fsItem
+  | fType fsItem == File =
+    fp == (takeDirectory . stName . dStat . fDetails) fsItem
+  | otherwise = False
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid
@@ -442,9 +467,9 @@ writeStat _ stat fidState me c =
         c {cFSItems = V.modify (\v -> DVM.write v index newFSItem) (cFSItems c)}
   in (Nothing, updatedContext)
 
-
 dirStat, fileStat :: FSItemsIndex -> Stat
 dirStat = initialStat QType.Directory
+
 fileStat = initialStat QType.File
 
 initialStat :: QType -> FSItemsIndex -> Stat
@@ -452,7 +477,7 @@ initialStat QType.Directory index =
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [QType.Directory,QType.AppendOnlyFile] 0 index
+  , stQid = Qid [QType.Directory, QType.AppendOnlyFile] 0 index
   , stMode =
       [ OtherExecutePermission
       , OtherWritePermission
@@ -478,7 +503,7 @@ initialStat QType.File index =
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [QType.File,QType.AppendOnlyFile] 0 index
+  , stQid = Qid [QType.File, QType.AppendOnlyFile] 0 index
   , stMode =
       [ OtherExecutePermission
       , OtherWritePermission
