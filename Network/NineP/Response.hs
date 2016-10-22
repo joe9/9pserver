@@ -11,8 +11,7 @@ import qualified Data.Vector             as V
 import           GHC.Show
 import           Protolude               hiding (show)
 
-import           Data.NineP            hiding (File)
-import qualified Data.NineP            as NineP
+import           Data.NineP
 import           Network.NineP.Context
 import           Network.NineP.Error
 

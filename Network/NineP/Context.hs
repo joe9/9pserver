@@ -7,7 +7,6 @@ import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.HashMap.Strict              as HashMap
 import           Data.List
-import           Data.String.Conversions
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Mutable              as DVM
@@ -18,10 +17,9 @@ import           System.Posix.FilePath
 import           Text.Groom
 
 import           Data.NineP
-import qualified Data.NineP       as NineP
 import           Data.NineP.QType hiding (Directory, File)
 import qualified Data.NineP.QType as QType
-import           Data.NineP.Stat  hiding (Directory, File)
+import           Data.NineP.Stat  hiding (Directory)
 import qualified Data.NineP.Stat  as Stat
 
 import Network.NineP.Error
