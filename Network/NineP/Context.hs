@@ -477,7 +477,7 @@ initialStat QType.Directory index =
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [QType.Directory, QType.AppendOnlyFile] 0 index
+  , stQid = Qid [QType.Directory] 0 index
   , stMode =
       [ OtherExecutePermission
       , OtherWritePermission
@@ -488,13 +488,12 @@ initialStat QType.Directory index =
       , UserExecutePermission
       , UserWritePermission
       , UserReadPermission
-      , AppendOnly
       , Stat.Directory
       ]
   , stAtime = 0
-  , stMtime = 0
+ , stMtime = 0
   , stLength = 0
-  , stName = ""
+  , stName = "/"
   , stUid = "root"
   , stGid = "root"
   , stMuid = "root"
@@ -514,7 +513,7 @@ initialStat QType.File index =
       , UserExecutePermission
       , UserWritePermission
       , UserReadPermission
-      , AppendOnly
+      , Stat.AppendOnly
       ]
   , stAtime = 0
   , stMtime = 0
@@ -542,7 +541,7 @@ nullStat index =
       , UserExecutePermission
       , UserWritePermission
       , UserReadPermission
-      , AppendOnly
+      , Stat.AppendOnly
       ]
   , stAtime = 0
   , stMtime = 0

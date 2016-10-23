@@ -16,16 +16,17 @@ import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
 import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
-import           qualified GHC.Show as Show
-import           qualified GHC.Base as Base
+import qualified GHC.Base                      as Base
+import qualified GHC.Show                      as Show
 import           Network.Simple.TCP
 import           Network.Socket                (socketToHandle)
 import           Protolude                     hiding (bracket, get,
                                                 handle, msg)
-import           System.IO                     (BufferMode (NoBuffering,BlockBuffering),
+import           System.IO                     (BufferMode (BlockBuffering, NoBuffering),
                                                 Handle,
                                                 IOMode (ReadWriteMode),
-                                                hClose, hSetBuffering, hFlush)
+                                                hClose, hFlush,
+                                                hSetBuffering)
 
 -- import Data.String.Conversions
 import           Data.NineP
@@ -45,9 +46,9 @@ run9PServer context = do
   serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
     putStrLn $ "TCP connection established from " ++ show remoteAddr
     clientConnection connectionSocket remoteAddr context
+
 -- Now you may use connectionSocket as you please within this scope,
 -- possibly using recv and send to interact with the remote end.
-
 -- got this from
 -- https://github.com/glguy/irc-core/blob/v2/src/Client/Network/Async.hs#L152
 clientConnection :: Socket -> a -> Context -> IO ()
@@ -106,8 +107,8 @@ process f tag msg c =
     Right d ->
       let result = f (traceShowId d) c
       in case traceShow (fst result) result of
-            (Left e, cn)  -> (toNinePFormat e tag, cn)
-            (Right m, cn) -> (toNinePFormat m tag, cn)
+           (Left e, cn)  -> (toNinePFormat e tag, cn)
+           (Right m, cn) -> (toNinePFormat m tag, cn)
 
 -- TODO Not bothering with max string size.
 scheduleRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Context
@@ -172,38 +173,42 @@ eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
   case runGet getWord32le (traceShowId rawSize) of
     Left e ->
-      atomically (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) rawSize)) >>
+      atomically
+        (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) rawSize)) >>
       furtherProcessing handle sendQ context
     Right wsize -> do
       let size = fromIntegral (traceShowId wsize)
       if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
-           then furtherProcessing handle sendQ context
-           else do
-             message <- BS.hGet handle (size - 4)
-             case runGetState getMessageHeaders (traceShowId message) 0 of
-               Left e ->
-                 atomically (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
-                 furtherProcessing handle sendQ context
-               Right ((MT.Tread, tag), msgData) -> do
-                 updatedContext <- scheduleRead sendQ tag msgData context
+        then furtherProcessing handle sendQ context
+        else do
+          message <- BS.hGet handle (size - 4)
+          case runGetState getMessageHeaders (traceShowId message) 0 of
+            Left e ->
+              atomically
+                (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
+              furtherProcessing handle sendQ context
+            Right ((MT.Tread, tag), msgData) -> do
+              updatedContext <- scheduleRead sendQ tag msgData context
+              furtherProcessing handle sendQ updatedContext
+            Right ((MT.Twrite, tag), msgData) -> do
+              (response, updatedContext) <- processIO write tag msgData context
+              atomically (writeTQueue sendQ response) >>
+                furtherProcessing handle sendQ updatedContext
+            Right ((MT.Topen, tag), msgData) -> do
+              (response, updatedContext) <- processIO open tag msgData context
+              atomically (writeTQueue sendQ response) >>
+                furtherProcessing handle sendQ updatedContext
+            Right ((msgType, tag), msgData) ->
+              let (response, updatedContext) =
+                    processMessage msgType tag msgData context
+                  -- for some reason, the "cs response" is not
+                  --    showing the correct value
+                  --  putStrLn ("msgType: "
+                  --     ++ cs (MT.showTransmitMessageType msgType)
+                  --     ++ ", Tag: " ++ show tag
+                  --     ++ ", response: " ++ cs response) >>
+              in flushAll >> atomically (writeTQueue sendQ response) >>
                  furtherProcessing handle sendQ updatedContext
-               Right ((MT.Twrite, tag), msgData) -> do
-                 (response, updatedContext) <-
-                   processIO write tag msgData context
-                 atomically (writeTQueue sendQ response) >>
-                   furtherProcessing handle sendQ updatedContext
-               Right ((MT.Topen, tag), msgData) -> do
-                 (response, updatedContext) <-
-                   processIO open tag msgData context
-                 atomically (writeTQueue sendQ response) >>
-                   furtherProcessing handle sendQ updatedContext
-               Right ((msgType, tag), msgData) ->
-                 let (response, updatedContext) =
-                       processMessage msgType tag msgData context
-                 in putStrLn ("msgType: " ++ cs (MT.showTransmitMessageType msgType) ++ ", Tag: " ++ show tag ++ ", response: " ++ cs response) >>
-                        flushAll >>
-                        atomically (writeTQueue sendQ response) >>
-                        furtherProcessing handle sendQ updatedContext
 
 furtherProcessing :: Handle -> TQueue ByteString -> Context -> IO ()
 furtherProcessing handle sendQ c = do
@@ -226,6 +231,5 @@ sendLoop handle q = do
 --   bs <- BS.hGet handle 8192
 --   atomically (writeTQueue q bs)
 --   receiveLoop handle q
-
 flushAll :: IO ()
 flushAll = hFlush stdout >> hFlush stderr
