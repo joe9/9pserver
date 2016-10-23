@@ -207,7 +207,7 @@ eventLoop handle sendQ context = do
                   --     ++ cs (MT.showTransmitMessageType msgType)
                   --     ++ ", Tag: " ++ show tag
                   --     ++ ", response: " ++ cs response) >>
-              in flushAll >> atomically (writeTQueue sendQ response) >>
+              in atomically (writeTQueue sendQ response) >>
                  furtherProcessing handle sendQ updatedContext
 
 furtherProcessing :: Handle -> TQueue ByteString -> Context -> IO ()
