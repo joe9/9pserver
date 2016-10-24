@@ -280,7 +280,6 @@ walk (Twalk fid newfid nwnames) c
 
 filterOutJustSlash :: [RawFilePath] -> [RawFilePath]
 filterOutJustSlash = filter ((/=) "/")
-
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
 --     let fixDirBit = (case f of

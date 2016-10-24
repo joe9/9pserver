@@ -6,7 +6,7 @@ module Network.NineP.Functions where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.Default
-import           qualified Data.HashMap.Strict              as HashMap
+import qualified Data.HashMap.Strict              as HashMap
 import           Data.List
 import           Data.Serialize
 import           Data.Vector                      (Vector)
@@ -19,10 +19,10 @@ import           System.Posix.FilePath
 import           Text.Groom
 
 import           Data.NineP
-import           Data.NineP.Qid hiding (Directory, File)
-import qualified Data.NineP.Qid as Qid
-import           Data.NineP.Stat  hiding (Directory)
-import qualified Data.NineP.Stat  as Stat
+import           Data.NineP.Qid  hiding (Directory, File)
+import qualified Data.NineP.Qid  as Qid
+import           Data.NineP.Stat hiding (Directory)
+import qualified Data.NineP.Stat as Stat
 
 import Network.NineP.Context
 import Network.NineP.Error
@@ -87,7 +87,8 @@ dirDetails name index =
 
 fsItemName :: RawFilePath -> RawFilePath
 fsItemName name
-  | isRelative name = panic "fsItemName: file or directory name must be absolute"
+  | isRelative name =
+    panic "fsItemName: file or directory name must be absolute"
   | name == "/" = name
   | hasTrailingPathSeparator name = dropTrailingPathSeparator name
   | otherwise = name
@@ -179,10 +180,7 @@ fileOpen fid mode fidState me c
    =
     return
       ( Right
-          ( Qid
-              [Qid.File]
-              ((dVersion . fDetails) me)
-              (fidFSItemsIndex fidState)
+          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c)
   | mode == Read -- OREAD
@@ -190,10 +188,7 @@ fileOpen fid mode fidState me c
     readQ <- newTQueueIO
     return
       ( Right
-          ( Qid
-              [Qid.File]
-              ((dVersion . fDetails) me)
-              (fidFSItemsIndex fidState)
+          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c
         { cFids =
@@ -202,10 +197,7 @@ fileOpen fid mode fidState me c
   | otherwise =
     return
       ( Right
-          ( Qid
-              [Qid.File]
-              ((dVersion . fDetails) me)
-              (fidFSItemsIndex fidState)
+          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c)
   where
@@ -276,16 +268,17 @@ dirRead _ _ _ _ fsItem c =
       -- remove the trailing slash of the directory
       dirname = (stName . dStat . fDetails) fsItem
       childrenStats =
-        (V.map (dStat . fDetails) . V.filter (belongsToDir (traceShowId dirname))) fsItems
+        (V.map (dStat . fDetails) .
+         V.filter (belongsToDir (traceShowId dirname)))
+          fsItems
       childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
   in (return . Right . BS.concat . V.toList) childrenStatsBS
 
 belongsToDir :: RawFilePath -> FSItem Context -> Bool
 belongsToDir fp fsItem
-  -- is the same item
+                -- is the same item
   | fp == (stName . dStat . fDetails) fsItem = False
-  | otherwise =
-    fp == (takeDirectory . stName . dStat . fDetails) fsItem
+  | otherwise = fp == (takeDirectory . stName . dStat . fDetails) fsItem
 
 belongsToDir1 fp fsItem
   | fType fsItem == Directory =
@@ -504,10 +497,13 @@ fileWalk
   -> (Either NineError [Qid], Context)
 fileWalk newfid name parentQids [] c =
   case (findIndexUsingName name (cFSItems c)) of
-    Nothing -> ( Right parentQids , c )
+    Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
-        ( Right parentQids
-        , c {cFids = HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)})
+      ( Right parentQids
+      , c
+        { cFids =
+            HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
+        })
 
 findIndexUsingName :: RawFilePath -> Vector (FSItem Context) -> Maybe Int
 findIndexUsingName name = V.findIndex (hasName name)
@@ -521,26 +517,28 @@ dirWalk
   -> (Either NineError [Qid], Context)
 dirWalk newfid name parentQids [] c =
   case (findIndexUsingName name (cFSItems c)) of
-    Nothing -> ( Right parentQids , c )
+    Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
-        ( Right parentQids
-        , c {cFids = HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)})
-
+      ( Right parentQids
+      , c
+        { cFids =
+            HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
+        })
 dirWalk newfid name parentQids (f:fs) c =
   case (findIndexUsingName (combine name f) (cFSItems c)) of
-    Nothing -> ( Right parentQids , c )
+    Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
       case (cFSItems c) V.!? fsItemsIndex of
-        Nothing -> ( Right parentQids , c )
+        Nothing -> (Right parentQids, c)
         Just fsItem ->
-                    ((dWalk . fDetails) fsItem)
-                    newfid
-                    (combine name f)
-                    (parentQids ++
-                        [ Qid
-                            ((qType . stQid . dStat . fDetails) fsItem)
-                            ((dVersion . fDetails) fsItem)
-                            fsItemsIndex
-                        ])
-                    fs
-                    c
+          ((dWalk . fDetails) fsItem)
+            newfid
+            (combine name f)
+            (parentQids ++
+             [ Qid
+                 ((qType . stQid . dStat . fDetails) fsItem)
+                 ((dVersion . fDetails) fsItem)
+                 fsItemsIndex
+             ])
+            fs
+            c
