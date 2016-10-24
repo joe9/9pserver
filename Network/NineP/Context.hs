@@ -5,24 +5,24 @@ module Network.NineP.Context where
 
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
+import           Data.Default
 import           Data.HashMap.Strict              as HashMap
 import           Data.List
-import           Data.Default
 import           Data.Serialize
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Mutable              as DVM
-import           GHC.Show
+import qualified GHC.Show                         as Show
 import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
 import           Text.Groom
 
 import           Data.NineP
-import           Data.NineP.Qid hiding (Directory, File)
-import qualified Data.NineP.Qid as Qid
-import           Data.NineP.Stat  hiding (Directory)
-import qualified Data.NineP.Stat  as Stat
+import           Data.NineP.Qid  hiding (Directory, File)
+import qualified Data.NineP.Qid  as Qid
+import           Data.NineP.Stat hiding (Directory)
+import qualified Data.NineP.Stat as Stat
 
 import Network.NineP.Error
 
@@ -119,7 +119,10 @@ type FSItemsIndex = Int
 data FidState = FidState
   { fidQueue        :: Maybe (TQueue ByteString)
   , fidFSItemsIndex :: FSItemsIndex
-  }
+  } deriving (Eq)
+
+instance Show FidState where
+  show = show . fidFSItemsIndex
 
 data BlockedRead = BlockedRead
   { bTag   :: Tag
@@ -139,9 +142,8 @@ type IOUnit = Word32
 
 -- TODO add name
 data Details s = Details
-  { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
-  --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
---   , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
+  { dOpen :: Fid -> OpenMode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
+    --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
   , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> Context -> (Either NineError [Qid], Context)
   , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
@@ -151,11 +153,12 @@ data Details s = Details
   , dClunk :: Fid -> FSItem s -> s -> (Maybe NineError, s)
   , dFlush :: FSItem s -> s -> s
   , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItemsIndex -> FSItem s -> s -> (Either NineError Qid, s)
-  , dCreate :: Fid -> ByteString -> Permissions -> Mode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
+  , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
   , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dVersion :: Word32
   }
 
+--   , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
 fsItemToQType :: FSItem Context -> QType
 fsItemToQType fsitem
   | fType fsitem == Directory = Qid.Directory

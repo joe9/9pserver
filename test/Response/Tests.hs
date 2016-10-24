@@ -8,10 +8,13 @@ module Response.Tests
 
 import Data.Bits
 import Data.Default
-import Protolude
+import Data.Serialize
+import Protolude hiding (get,put)
 import Test.Tasty
 import Test.Tasty.HUnit
-
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.Vector as V
+import qualified Data.ByteString as BS
 --
 import BitMask
 
@@ -48,6 +51,11 @@ tests =
     , testCase "testWalk03" testWalk03
     , testCase "testWalk04" testWalk04
     , testCase "testWalk05" testWalk05
+    , testCase "testOpenWrite" testOpenWrite
+    , testCase "testOpenRead" testOpenRead
+    , testCase "testClunk02" testClunk02
+    , testCase "testReadDirectoryDir1" testReadDirectoryDir1
+    , testCase "testReadDirectoryRoot" testReadDirectoryRoot
     ]
 
 testVersion01 :: Assertion
@@ -156,6 +164,60 @@ testWalk05 =
       walkresult = walk (Twalk 0 1 ["dir1"]) (snd statresult)
       result = walk (Twalk 1 2 ["in"]) (snd walkresult)
   in fst result @?= Right (Rwalk [Qid [Qid.File,AppendOnlyFile] 0 4])
+
+testOpenWrite :: Assertion
+testOpenWrite = do
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
+  result <- open (Topen 1 Write) (snd walkresult)
+  fst result @?= Right (Ropen (Qid [Qid.File] 0 1) 8169)
+
+testOpenRead :: Assertion
+testOpenRead = do
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 ["out"]) (snd statresult)
+  result <- open (Topen 1 Read) (snd walkresult)
+  fst result @?= Right (Ropen (Qid [Qid.File] 0 2) 8169)
+
+testClunk02 :: Assertion
+testClunk02 = do
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
+  openresult <- open (Topen 1 Write) (snd walkresult)
+  fst openresult @?= Right (Ropen (Qid [Qid.File] 0 1) 8169)
+  (HashMap.toList . cFids . snd) openresult @?= [(0,FidState Nothing 0),(1,FidState Nothing 1)]
+  let result = clunk (Tclunk 1) (snd openresult)
+  fst result @?= Right Rclunk
+  ( HashMap.toList . cFids . snd) result @?= [(0,FidState Nothing 0)]
+
+testReadDirectoryDir1 :: Assertion
+testReadDirectoryDir1 = do
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+--       walkresult = walk (Twalk 0 1 []) (snd statresult)
+      walkresult = walk (Twalk 0 1 ["dir1"]) (snd statresult)
+  openresult <- open (Topen 1 Read) (snd walkresult)
+  fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 3) 8169)
+  (HashMap.toList . cFids . snd) openresult @?= [(0,FidState Nothing 0),(1,FidState Nothing 3)]
+  result <- read (Tread 1 0 8168) (snd openresult)
+--   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems sampleContexts) V.! 4))
+  result @?= Right ((Rread . runPut . put . dStat . fDetails) (sampleFile "/dir1/in" 4))
+
+testReadDirectoryRoot :: Assertion
+testReadDirectoryRoot = do
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 []) (snd statresult)
+  openresult <- open (Topen 1 Read) (snd walkresult)
+  fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 0) 8169)
+  (HashMap.toList . cFids . snd) openresult @?= [(0,FidState Nothing 0),(1,FidState Nothing 0)]
+  result <- read (Tread 1 0 8168) (snd openresult)
+--   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems sampleContexts) V.! 4))
+  let statBS = runPut . put . dStat . fDetails
+  result @?= Right ((Rread . BS.concat . fmap statBS) [sampleFile "/in" 1,sampleFile "/out" 2,sampleDir "/dir1" 3])
 
 -- testIdentifyStateChanges02 :: Assertion
 -- testIdentifyStateChanges02 =

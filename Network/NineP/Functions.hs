@@ -56,7 +56,7 @@ fileDetails name index =
   { dOpen = fileOpen
   , dWalk = fileWalk
   , dRead = fileRead
-  , dStat = (fileStat index) {stName = fileName name}
+  , dStat = (fileStat index) {stName = fsItemName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -73,7 +73,7 @@ dirDetails name index =
   { dOpen = dirOpen
   , dWalk = dirWalk
   , dRead = dirRead
-  , dStat = (dirStat index) {stName = dirName name}
+  , dStat = (dirStat index) {stName = fsItemName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
   , dWrite = undefined
@@ -85,16 +85,10 @@ dirDetails name index =
   , dVersion = 0
   }
 
-dirName :: RawFilePath -> RawFilePath
-dirName name
-  | isRelative name = panic "dirName: directory name must be absolute"
+fsItemName :: RawFilePath -> RawFilePath
+fsItemName name
+  | isRelative name = panic "fsItemName: file or directory name must be absolute"
   | name == "/" = name
-  | hasTrailingPathSeparator name = name
-  | otherwise = addTrailingPathSeparator name
-
-fileName :: RawFilePath -> RawFilePath
-fileName name
-  | isRelative name = panic "fileName: file name must be absolute"
   | hasTrailingPathSeparator name = dropTrailingPathSeparator name
   | otherwise = name
 
@@ -121,7 +115,7 @@ noneDetails =
 none :: FSItem Context
 none = FSItem None noneDetails []
 
--- fileOpen :: Fid -> Mode -> s -> (Either NineError Qid, s)
+-- fileOpen :: Fid -> OpenMode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
 -- fileWalk :: NineError
 -- fileWalk = ENotADir
@@ -164,7 +158,7 @@ fdCreate
   :: Fid
   -> ByteString
   -> Permissions
-  -> Mode
+  -> OpenMode
   -> FSItem Context
   -> Context
   -> (Either NineError (Qid, IOUnit), Context)
@@ -175,13 +169,13 @@ fdCreate _ _ _ _ _ context = (Left (ENotImplemented "fileCreate"), context)
 -- TODO when opened for reading, create and add the TQueue here
 fileOpen
   :: Fid
-  -> Mode
+  -> OpenMode
   -> FidState
   -> FSItem Context
   -> Context
   -> IO (Either NineError (Qid, IOUnit), Context)
 fileOpen fid mode fidState me c
-  | mode == 0 && isJust (fidQueue fidState) -- OREAD and Q already exists
+  | mode == Read && isJust (fidQueue fidState) -- OREAD and Q already exists
    =
     return
       ( Right
@@ -191,7 +185,7 @@ fileOpen fid mode fidState me c
               (fidFSItemsIndex fidState)
           , iounit)
       , c)
-  | mode == 0 -- OREAD
+  | mode == Read -- OREAD
    = do
     readQ <- newTQueueIO
     return
@@ -222,7 +216,7 @@ fileOpen fid mode fidState me c
 -- TODO when opened for reading, create and add the TQueue here
 dirOpen
   :: Fid
-  -> Mode
+  -> OpenMode
   -> FidState
   -> FSItem Context
   -> Context
@@ -280,16 +274,22 @@ dirRead
 dirRead _ _ _ _ fsItem c =
   let fsItems = cFSItems c
       -- remove the trailing slash of the directory
-      dirname = (takeDirectory . stName . dStat . fDetails) fsItem
+      dirname = (stName . dStat . fDetails) fsItem
       childrenStats =
-        (V.map (dStat . fDetails) . V.filter (belongsToDir dirname)) fsItems
-      childrenStatsBS = V.map (runPut . put) childrenStats
+        (V.map (dStat . fDetails) . V.filter (belongsToDir (traceShowId dirname))) fsItems
+      childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
   in (return . Right . BS.concat . V.toList) childrenStatsBS
 
 belongsToDir :: RawFilePath -> FSItem Context -> Bool
 belongsToDir fp fsItem
+  -- is the same item
+  | fp == (stName . dStat . fDetails) fsItem = False
+  | otherwise =
+    fp == (takeDirectory . stName . dStat . fDetails) fsItem
+
+belongsToDir1 fp fsItem
   | fType fsItem == Directory =
-    fp == (takeDirectory . takeDirectory . stName . dStat . fDetails) fsItem
+    fp == (takeDirectory . stName . dStat . fDetails) fsItem
   | fType fsItem == File =
     fp == (takeDirectory . stName . dStat . fDetails) fsItem
   | otherwise = False
