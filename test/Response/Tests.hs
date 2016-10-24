@@ -46,6 +46,8 @@ tests =
     , testCase "testWalk01" testWalk01
     , testCase "testWalk02" testWalk02
     , testCase "testWalk03" testWalk03
+    , testCase "testWalk04" testWalk04
+    , testCase "testWalk05" testWalk05
     ]
 
 testVersion01 :: Assertion
@@ -139,6 +141,21 @@ testWalk03 =
       statresult = stat (Tstat 0) (snd attachresult)
       result = walk (Twalk 0 1 ["dir1"]) (snd statresult)
   in fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3])
+
+testWalk04 :: Assertion
+testWalk04 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      result = walk (Twalk 0 1 ["dir1","in"]) (snd statresult)
+  in fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3, Qid [Qid.File,AppendOnlyFile] 0 4])
+
+testWalk05 :: Assertion
+testWalk05 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 ["dir1"]) (snd statresult)
+      result = walk (Twalk 1 2 ["in"]) (snd walkresult)
+  in fst result @?= Right (Rwalk [Qid [Qid.File,AppendOnlyFile] 0 4])
 
 -- testIdentifyStateChanges02 :: Assertion
 -- testIdentifyStateChanges02 =
