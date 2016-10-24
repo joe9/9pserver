@@ -6,7 +6,7 @@ module Network.NineP.Functions where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.Default
-import           Data.HashMap.Strict              as HashMap
+import           qualified Data.HashMap.Strict              as HashMap
 import           Data.List
 import           Data.Serialize
 import           Data.Vector                      (Vector)
@@ -534,62 +534,112 @@ hasName name fsitem =
 --     fsItem = fromMaybe d ((cFSItems c) V.!? fsItemIndex)
 -- when length qids == length nwnames = insert newfid
 
+-- fileWalk2
+--   :: Fid
+--   -> ByteString
+--   -> [Qid]
+--   -> [ByteString]
+--   -> FSItemsIndex
+--   -> FSItem Context
+--   -> Context
+--   -> (Either NineError [Qid], Context)
+-- fileWalk2 newfid name parentQids _ fsItemIndex fsItem c =
+--   ( Right
+--       (parentQids ++
+--        [ Qid
+--            ((qType . stQid . dStat . fDetails) fsItem)
+--            ((dVersion . fDetails) fsItem)
+--            fsItemIndex
+--        ])
+--   , c {cFids = HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)})
+
+-- dirWalk2
+--   :: Fid
+--   -> ByteString
+--   -> [Qid]
+--   -> [ByteString]
+--   -> FSItemsIndex
+--   -> FSItem Context
+--   -> Context
+--   -> (Either NineError [Qid], Context)
+-- dirWalk2 newfid name parentQids [] fsItemIndex fsItem c =
+--   ( Right
+--       (parentQids ++
+--        [ Qid
+--            ((qType . stQid . dStat . fDetails) fsItem)
+--            ((dVersion . fDetails) fsItem)
+--            fsItemIndex
+--        ])
+--   , c {cFids = HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)})
+-- dirWalk2 newfid name parentQids (f:fs) fsItemIndex fsItem c =
+--   let vectorFSItems = cFSItems c
+--       newName = combine (normalizePath name) f
+--   in case V.findIndex (hasName newName) vectorFSItems of
+--        Nothing -> (Right parentQids, c)
+--        (Just fsItemIndex) ->
+--          case vectorFSItems V.!? fsItemIndex of
+--            Nothing -> (Right parentQids, c)
+--            (Just fsItem) ->
+--                     ((dWalk . fDetails) fsItem)
+--                     newfid
+--                     newName
+--                     (parentQids ++
+--                         [ Qid
+--                             ((qType . stQid . dStat . fDetails) fsItem)
+--                             ((dVersion . fDetails) fsItem)
+--                             fsItemIndex
+--                         ])
+--                     fs
+--                     fsItemIndex
+--                     fsItem
+--                     c
+
 fileWalk
-  :: Fid
-  -> ByteString
-  -> [Qid]
-  -> [ByteString]
-  -> FSItemsIndex
-  -> FSItem Context
+  :: NewFid
+  -> RawFilePath
+  -> [Qid] -- parent qids
+  -> [RawFilePath] -- still to traverse
   -> Context
   -> (Either NineError [Qid], Context)
-fileWalk newfid name parentQids _ fsItemIndex fsItem c =
-  ( Right
-      (parentQids ++
-       [ Qid
-           ((qType . stQid . dStat . fDetails) fsItem)
-           ((dVersion . fDetails) fsItem)
-           fsItemIndex
-       ])
-  , c {cFids = HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)})
+fileWalk newfid name parentQids [] c =
+  case (findIndexUsingName name (cFSItems c)) of
+    Nothing -> ( Right parentQids , c )
+    Just fsItemsIndex ->
+        ( Right parentQids
+        , c {cFids = HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)})
+
+findIndexUsingName :: RawFilePath -> Vector (FSItem Context) -> Maybe Int
+findIndexUsingName name = V.findIndex (hasName name)
 
 dirWalk
-  :: Fid
-  -> ByteString
-  -> [Qid]
-  -> [ByteString]
-  -> FSItemsIndex
-  -> FSItem Context
+  :: NewFid
+  -> RawFilePath
+  -> [Qid] -- parent qids
+  -> [RawFilePath] -- still to traverse
   -> Context
   -> (Either NineError [Qid], Context)
-dirWalk newfid name parentQids [] fsItemIndex fsItem c =
-  ( Right
-      (parentQids ++
-       [ Qid
-           ((qType . stQid . dStat . fDetails) fsItem)
-           ((dVersion . fDetails) fsItem)
-           fsItemIndex
-       ])
-  , c {cFids = HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)})
-dirWalk newfid name parentQids (f:fs) fsItemIndex fsItem c =
-  let vectorFSItems = cFSItems c
-      newName = combine (normalizePath name) f
-  in case V.findIndex (hasName newName) vectorFSItems of
-       Nothing -> (Right parentQids, c)
-       (Just fsItemIndex) ->
-         case vectorFSItems V.!? fsItemIndex of
-           Nothing -> (Right parentQids, c)
-           (Just fsItem) ->
-             ((dWalk . fDetails) fsItem)
-               newfid
-               newName
-               (parentQids ++
-                [ Qid
-                    ((qType . stQid . dStat . fDetails) fsItem)
-                    ((dVersion . fDetails) fsItem)
-                    fsItemIndex
-                ])
-               fs
-               fsItemIndex
-               fsItem
-               c
+dirWalk newfid name parentQids [] c =
+  case (findIndexUsingName name (cFSItems c)) of
+    Nothing -> ( Right parentQids , c )
+    Just fsItemsIndex ->
+        ( Right parentQids
+        , c {cFids = HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)})
+
+dirWalk newfid name parentQids (f:fs) c =
+  case (findIndexUsingName (combine name f) (cFSItems c)) of
+    Nothing -> ( Right parentQids , c )
+    Just fsItemsIndex ->
+      case (cFSItems c) V.!? fsItemsIndex of
+        Nothing -> ( Right parentQids , c )
+        Just fsItem ->
+                    ((dWalk . fDetails) fsItem)
+                    newfid
+                    (combine name f)
+                    (parentQids ++
+                        [ Qid
+                            ((qType . stQid . dStat . fDetails) fsItem)
+                            ((dVersion . fDetails) fsItem)
+                            fsItemsIndex
+                        ])
+                    fs
+                    c

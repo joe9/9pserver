@@ -17,8 +17,8 @@ import BitMask
 
 --
 import           Data.NineP
-import           Data.NineP.QType hiding (Directory)
-import qualified Data.NineP.QType as QType
+import           Data.NineP.Qid hiding (Directory)
+import qualified Data.NineP.Qid as Qid
 import           Data.NineP.Stat  hiding (Directory)
 import qualified Data.NineP.Stat  as Stat
 
@@ -45,6 +45,7 @@ tests =
     , testCase "testClunk01" testClunk01
     , testCase "testWalk01" testWalk01
     , testCase "testWalk02" testWalk02
+    , testCase "testWalk03" testWalk03
     ]
 
 testVersion01 :: Assertion
@@ -70,7 +71,7 @@ testVersion04 =
 testAttach01 :: Assertion
 testAttach01 =
   let result = attach (Tattach 0 0xffffffff "root" "") sampleContext
-  in (fst result) @?= (Right (Rattach (Qid [QType.Directory] 0 0)))
+  in (fst result) @?= (Right (Rattach (Qid [Qid.Directory] 0 0)))
 
 testStat01 :: Assertion
 testStat01 =
@@ -85,7 +86,7 @@ testStat01 =
             , stDev = 0
             , stQid =
                 Qid
-                { qType = [QType.Directory]
+                { qType = [Qid.Directory]
                 , qversion = 0
                 , qPath = 0
                 }
@@ -137,7 +138,7 @@ testWalk03 =
   let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
       statresult = stat (Tstat 0) (snd attachresult)
       result = walk (Twalk 0 1 ["dir1"]) (snd statresult)
-  in fst result @?= Right (Rwalk [])
+  in fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3])
 
 -- testIdentifyStateChanges02 :: Assertion
 -- testIdentifyStateChanges02 =

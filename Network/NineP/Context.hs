@@ -141,7 +141,8 @@ type IOUnit = Word32
 data Details s = Details
   { dOpen :: Fid -> Mode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
   --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
-  , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
+--   , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
+  , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> Context -> (Either NineError [Qid], Context)
   , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
