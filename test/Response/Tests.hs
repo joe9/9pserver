@@ -25,6 +25,7 @@ import qualified Data.NineP.Stat  as Stat
 --
 import Network.NineP
 import Network.NineP.Context
+import Network.NineP.Functions
 import Network.NineP.Error
 import Network.NineP.Response
 import Network.NineP.Server
@@ -42,36 +43,38 @@ tests =
     , testCase "testAttach01" testAttach01
     , testCase "testStat01" testStat01
     , testCase "testClunk01" testClunk01
+    , testCase "testWalk01" testWalk01
+    , testCase "testWalk02" testWalk02
     ]
 
 testVersion01 :: Assertion
 testVersion01 =
-  let result = version (Tversion 8192 Ver9P2000) def
+  let result = version (Tversion 8192 Ver9P2000) sampleContext
   in (fst result) @?= (Right (Rversion 8192 Ver9P2000))
 
 testVersion02 :: Assertion
 testVersion02 =
-  let result = version (Tversion 8192 VerUnknown) def
+  let result = version (Tversion 8192 VerUnknown) sampleContext
   in (fst result) @?= (Right (Rversion 8192 VerUnknown))
 
 testVersion03 :: Assertion
 testVersion03 =
-  let result = version (Tversion 9000 Ver9P2000) def
+  let result = version (Tversion 9000 Ver9P2000) sampleContext
   in (fst result) @?= (Right (Rversion 9000 Ver9P2000))
 
 testVersion04 :: Assertion
 testVersion04 =
-  let result = version (Tversion 8000 Ver9P2000) def
+  let result = version (Tversion 8000 Ver9P2000) sampleContext
   in (fst result) @?= (Right (Rversion 8192 Ver9P2000))
 
 testAttach01 :: Assertion
 testAttach01 =
-  let result = attach (Tattach 0 0xffffffff "root" "") def
+  let result = attach (Tattach 0 0xffffffff "root" "") sampleContext
   in (fst result) @?= (Right (Rattach (Qid [QType.Directory] 0 0)))
 
 testStat01 :: Assertion
 testStat01 =
-  let attachresult = attach (Tattach 0 0xffffffff "root" "") def
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
       result = stat (Tstat 0) (snd attachresult)
   in fst result @?=
      Right
@@ -110,10 +113,31 @@ testStat01 =
 
 testClunk01 :: Assertion
 testClunk01 =
-  let attachresult = attach (Tattach 0 0xffffffff "root" "") def
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
       statresult = stat (Tstat 0) (snd attachresult)
       result = clunk (Tclunk 0) (snd statresult)
   in fst result @?= Right Rclunk
+
+testWalk01 :: Assertion
+testWalk01 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      result = walk (Twalk 0 1 []) (snd statresult)
+  in fst result @?= Right (Rwalk [])
+
+testWalk02 :: Assertion
+testWalk02 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      result = walk (Twalk 0 1 ["/"]) (snd statresult)
+  in fst result @?= Right (Rwalk [])
+
+testWalk03 :: Assertion
+testWalk03 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      result = walk (Twalk 0 1 ["dir1"]) (snd statresult)
+  in fst result @?= Right (Rwalk [])
 
 -- testIdentifyStateChanges02 :: Assertion
 -- testIdentifyStateChanges02 =

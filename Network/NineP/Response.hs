@@ -3,17 +3,21 @@
 
 module Network.NineP.Response where
 
-import qualified Data.ByteString         as BS
-import           Data.HashMap.Strict     as HashMap
+import qualified Data.ByteString                  as BS
+import qualified Data.HashMap.Strict              as HashMap
 import           Data.Maybe
 import           Data.String.Conversions
-import qualified Data.Vector             as V
+import qualified Data.Vector                      as V
 import           GHC.Show
-import           Protolude               hiding (show)
+import           Protolude                        hiding (show)
+import           System.Posix.ByteString.FilePath
+import           System.Posix.FilePath
 
-import           Data.NineP
-import           Network.NineP.Context
-import           Network.NineP.Error
+import Data.NineP
+import Data.NineP.Stat
+import Network.NineP.Context
+import Network.NineP.Error
+import Network.NineP.Functions
 
 -- TODO Not bothering with T.chunksOf on size.
 -- assuming that the length of bytestring will be the same as that of
@@ -25,15 +29,13 @@ version (Tversion s tversion) context =
         if tversion == VerUnknown
           then context {cMaxMessageSize = newSize}
           else (resetContext context) {cMaxMessageSize = newSize}
-  in ( (Right . Rversion (fromIntegral newSize)) tversion
-     , updatedContext)
+  in ((Right . Rversion (fromIntegral newSize)) tversion, updatedContext)
 
 -- below for debugging
 -- version :: Tversion -> Context -> (Either Rerror Rversion, Context)
 -- version (Tversion s rversion) context =
 --   ( (Right . Rversion (fromIntegral 8192)) "9P2000"
 --      , context)
-
 -- checkPerms :: (Monad m, EmbedIO m) => NineFile m -> Word8 -> Nine m ()
 -- checkPerms f want = do
 --     s <- getStat f
@@ -244,20 +246,42 @@ wstat (Twstat fid stat) c =
                 (((dWriteStat . fDetails) d) fid stat fds d c)
                 Rwstat
 
+-- TODO ../
 walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)
 walk (Twalk fid newfid nwnames) c
   | isJust (HashMap.lookup newfid (cFids c)) && fid /= newfid =
     (rerror (OtherError "walk: proposed newfid is already in use"), c)
   | otherwise =
-       case HashMap.lookup fid (cFids c) of
-          Nothing -> (rerror (OtherError "walk: invalid fid"), c)
-          Just fds ->
-             let f d =
-                    runEitherFunction (((dWalk . fDetails) d) fid newfid nwnames fds d c) Rwalk
-             in maybe (rerror (OtherError "walk: invalid FSItemsIndex"), c)
-                      f
-                      ((cFSItems c) V.!? (fidFSItemsIndex fds))
+    case HashMap.lookup fid (cFids c) of
+      Nothing -> (rerror (OtherError "walk: invalid fid"), c)
+      Just fidState ->
+        if null (filterOutJustSlash nwnames)
+          then ( Right (Rwalk [])
+               , c
+                 { cFids =
+                     HashMap.insert
+                       newfid
+                       (FidState Nothing (fidFSItemsIndex fidState))
+                       (cFids c)
+                 })
+          else let f fsItem =
+                     runEitherFunction
+                       (((dWalk . fDetails) fsItem)
+                          newfid
+                          ((stName . dStat . fDetails) fsItem)
+                          []
+                          (filterOutJustSlash nwnames)
+                          (fidFSItemsIndex fidState)
+                          fsItem
+                          c)
+                       Rwalk
+               in maybe
+                    (rerror (OtherError "walk: invalid FSItemsIndex"), c)
+                    f
+                    ((cFSItems c) V.!? (fidFSItemsIndex fidState))
 
+filterOutJustSlash :: [RawFilePath] -> [RawFilePath]
+filterOutJustSlash = filter ((/=) "/")
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
 --     let fixDirBit = (case f of
