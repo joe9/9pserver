@@ -180,6 +180,7 @@ create (Tcreate fid name permissions mode) c =
 --             s <- mapM getStat $ contents
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
+-- TODO split based on offset and count
 read :: Tread -> Context -> IO (Either Rerror Rread)
 read (Tread fid offset@(0) count) c =
   case HashMap.lookup fid (cFids c) of

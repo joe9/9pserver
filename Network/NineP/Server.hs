@@ -111,6 +111,7 @@ process f tag msg c =
            (Right m, cn) -> (toNinePFormat m tag, cn)
 
 -- TODO Not bothering with max string size.
+-- TODO split based on offset and count
 scheduleRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Context
 scheduleRead q tag msg c = do
   asyncValue <- async (processRead q tag msg c)

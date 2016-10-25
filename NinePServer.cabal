@@ -49,6 +49,9 @@ Library
                   Network.NineP.Server
                   Network.NineP.Context
                   Network.NineP.Functions
+                  Network.NineP.ReadOnlyFile
+                  Network.NineP.WriteOnlyFile
+                  Network.NineP.Directory
                   Network.NineP.Response
 
 -- Executable test

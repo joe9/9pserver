@@ -12,14 +12,14 @@ import           Data.Serialize
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Mutable              as DVM
-import           GHC.Show
 import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
-import           Text.Groom
+-- import           Text.Groom
+-- import           GHC.Show
 
 import           Data.NineP
-import           Data.NineP.Qid  hiding (Directory, File)
+import           Data.NineP.Qid  hiding (Directory)
 import qualified Data.NineP.Qid  as Qid
 import           Data.NineP.Stat hiding (Directory)
 import qualified Data.NineP.Stat as Stat
@@ -43,15 +43,16 @@ sampleFSItemsList =
 sampleDir, sampleFile :: RawFilePath -> FSItemsIndex -> FSItem Context
 sampleDir name index = FSItem Occupied (dirDetails name index) []
 
-sampleFile name index = FSItem Occupied (fileDetails name index) []
+sampleFile name index = FSItem Occupied (sampleFileDetails name index) []
 
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
 
 -- TODO need some validation to ensure that the parent directory exists
 -- name is an absolute path
-fileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details Context
-fileDetails name index =
+-- use readOnlyFileDetails or writeOnlyFileDetails instead of this
+sampleFileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details Context
+sampleFileDetails name index =
   Details
   { dOpen = fileOpen
   , dWalk = fileWalk
@@ -59,9 +60,9 @@ fileDetails name index =
   , dStat = (fileStat index) {stName = fsItemName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
-  , dWrite = undefined
+  , dWrite = undefined -- fileWrite
   , dClunk = fdClunk
-  , dFlush = undefined
+  , dFlush = fdFlush
   , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = fileRemove
@@ -77,15 +78,24 @@ dirDetails name index =
   , dStat = (dirStat index) {stName = fsItemName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
-  , dWrite = undefined
+  , dWrite = dirWrite
   , dClunk = fdClunk
-  , dFlush = undefined
+  , dFlush = fdFlush
   , dAttach = dirAttach
   , dCreate = fdCreate
-  , dRemove = undefined
+  , dRemove = dirRemove
   , dVersion = 0
   , dAbsoluteName = fsItemAbsoluteName name
   }
+
+dirRemove :: Fid -> FidState -> FSItem Context -> Context -> (Maybe NineError, Context)
+dirRemove _ _ _ c = (Just (OtherError "Not implemented"), c)
+
+dirWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem Context -> Context -> IO (Either NineError Count, Context)
+dirWrite _ _ _ _ _ c = return (Left (OtherError "Not implemented"), c)
+
+fdFlush :: FSItem Context -> Context -> Context
+fdFlush _ c = c
 
 fsItemName :: RawFilePath -> RawFilePath
 fsItemName name
@@ -236,19 +246,19 @@ dirOpen fid _ fidState me c =
        , c
          {cFids = HashMap.insert fid (fidState {fidQueue = Nothing}) (cFids c)})
 
-fileWrite
-  :: Fid
-  -> Offset
-  -> ByteString
-  -> FidState
-  -> FSItem s
-  -> s
-  -> IO (Either NineError Count, s)
-fileWrite _ _ _ (FidState Nothing _) _ c =
-  return ((Left . OtherError) "No Queue to read from", c)
-fileWrite fid offset bs fs@(FidState (Just q) i) me c = do
-  atomically (writeTQueue q bs)
-  return ((Right . fromIntegral . BS.length) bs, c)
+-- fileWrite
+--   :: Fid
+--   -> Offset
+--   -> ByteString
+--   -> FidState
+--   -> FSItem s
+--   -> s
+--   -> IO (Either NineError Count, s)
+-- fileWrite _ _ _ (FidState Nothing _) _ c =
+--   return ((Left . OtherError) "No Queue to write to", c)
+-- fileWrite _ _ bs (FidState (Just q) _) _ c = do
+--   atomically (writeTQueue q bs)
+--   return ((Right . fromIntegral . BS.length) bs, c)
 
 -- TODO check for permissions, iounit details, etc
 -- TODO ignoring offset and count
@@ -260,7 +270,7 @@ fileRead
   -> FSItem Context
   -> Context
   -> IO (Either NineError ByteString)
-fileRead _ _ _ (FidState Nothing _) _ c =
+fileRead _ _ _ (FidState Nothing _) _ _ =
   return ((Left . OtherError) "No Queue to read from")
 fileRead _ _ _ (FidState (Just q) _) _ _ =
   (fmap Right . atomically . readTQueue) q
@@ -392,8 +402,8 @@ fileStat index = -- if it is not a directory, it is a file
   , stGid = "root"
   , stMuid = "root"
   }
--- initialStat _ index = nullStat index
 
+-- initialStat _ index = nullStat index
 vacantStat :: FSItemsIndex -> Stat
 vacantStat index =
   Stat
@@ -497,7 +507,7 @@ fileWalk
   -> Context
   -> (Either NineError [Qid], Context)
 fileWalk newfid name parentQids [] c =
-  case (findIndexUsingName name (cFSItems c)) of
+  case findIndexUsingName name (cFSItems c) of
     Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
       ( Right parentQids
@@ -505,6 +515,7 @@ fileWalk newfid name parentQids [] c =
         { cFids =
             HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
         })
+fileWalk _ _ parentQids _ c = (Right parentQids , c)
 
 findIndexUsingName :: RawFilePath -> Vector (FSItem Context) -> Maybe Int
 findIndexUsingName name = V.findIndex (hasName name)
@@ -517,7 +528,7 @@ dirWalk
   -> Context
   -> (Either NineError [Qid], Context)
 dirWalk newfid name parentQids [] c =
-  case (findIndexUsingName name (cFSItems c)) of
+  case findIndexUsingName name (cFSItems c) of
     Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
       ( Right parentQids
@@ -526,7 +537,7 @@ dirWalk newfid name parentQids [] c =
             HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
         })
 dirWalk newfid name parentQids (f:fs) c =
-  case (findIndexUsingName (combine name f) (cFSItems c)) of
+  case findIndexUsingName (combine name f) (cFSItems c) of
     Nothing -> (Right parentQids, c)
     Just fsItemsIndex ->
       case (cFSItems c) V.!? fsItemsIndex of
