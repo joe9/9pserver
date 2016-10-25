@@ -181,17 +181,18 @@ create (Tcreate fid name permissions mode) c =
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
 read :: Tread -> Context -> IO (Either Rerror Rread)
-read (Tread fid offset count) c =
+read (Tread fid offset@(0) count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"))
     Just fds ->
       case (cFSItems c) V.!? (fidFSItemsIndex fds) of
         Nothing -> return (rerror EInval)
         Just d -> do
-          result <- ((dRead . fDetails) d) fid offset count fds d c
+          result <- ((dRead . fDetails) d) fid 0 count fds d c
           case result of
             Left e  -> return (rerror e)
             Right v -> return ((Right . Rread) v)
+read _ _ = return ((Right . Rread) BS.empty)
 
 write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
 write (Twrite fid offset count) c =
@@ -268,7 +269,7 @@ walk (Twalk fid newfid nwnames) c
                      runEitherFunction
                        (((dWalk . fDetails) fsItem)
                           newfid
-                          ((stName . dStat . fDetails) fsItem)
+                          ((dAbsoluteName . fDetails) fsItem)
                           []
                           (filterOutJustSlash nwnames)
                           c)

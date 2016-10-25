@@ -119,12 +119,12 @@ scheduleRead q tag msg c = do
 -- TODO Not bothering with max string size.
 processRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Tag
 processRead q tag msg c =
-  case runGet get msg of
+  case traceShowId (runGet get msg) of
     Left e ->
       atomically (writeTQueue q (toNinePFormat (Rerror (cs e)) tag)) >>
       return tag
     Right d -> do
-      eitherResult <- read d c
+      eitherResult <- read (traceShowId d) c
       case eitherResult of
         Left e -> atomically (writeTQueue q (toNinePFormat e tag)) >> return tag
         Right m ->

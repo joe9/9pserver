@@ -41,9 +41,9 @@ sampleFSItemsList =
     ]
 
 sampleDir, sampleFile :: RawFilePath -> FSItemsIndex -> FSItem Context
-sampleDir name index = FSItem Directory (dirDetails name index) []
+sampleDir name index = FSItem Occupied (dirDetails name index) []
 
-sampleFile name index = FSItem File (fileDetails name index) []
+sampleFile name index = FSItem Occupied (fileDetails name index) []
 
 resetContext :: Context -> Context
 resetContext c = c {cFids = HashMap.empty}
@@ -66,6 +66,7 @@ fileDetails name index =
   , dCreate = fdCreate
   , dRemove = fileRemove
   , dVersion = 0
+  , dAbsoluteName = fsItemAbsoluteName name
   }
 
 dirDetails name index =
@@ -83,10 +84,19 @@ dirDetails name index =
   , dCreate = fdCreate
   , dRemove = undefined
   , dVersion = 0
+  , dAbsoluteName = fsItemAbsoluteName name
   }
 
 fsItemName :: RawFilePath -> RawFilePath
 fsItemName name
+  | isRelative name =
+    panic "fsItemName: file or directory name must be absolute"
+  | name == "/" = name
+  | hasTrailingPathSeparator name = takeFileName (dropTrailingPathSeparator name)
+  | otherwise = takeFileName name
+
+fsItemAbsoluteName :: RawFilePath -> RawFilePath
+fsItemAbsoluteName name
   | isRelative name =
     panic "fsItemName: file or directory name must be absolute"
   | name == "/" = name
@@ -111,10 +121,11 @@ noneDetails =
   , dCreate = undefined
   , dRemove = undefined
   , dVersion = 0
+  , dAbsoluteName = ""
   }
 
 none :: FSItem Context
-none = FSItem None noneDetails []
+none = FSItem Vacant noneDetails []
 
 -- fileOpen :: Fid -> OpenMode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
@@ -180,7 +191,7 @@ fileOpen fid mode fidState me c
    =
     return
       ( Right
-          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
+          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c)
   | mode == Read -- OREAD
@@ -188,7 +199,7 @@ fileOpen fid mode fidState me c
     readQ <- newTQueueIO
     return
       ( Right
-          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
+          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c
         { cFids =
@@ -197,7 +208,7 @@ fileOpen fid mode fidState me c
   | otherwise =
     return
       ( Right
-          ( Qid [Qid.File] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
+          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
           , iounit)
       , c)
   where
@@ -266,7 +277,7 @@ dirRead
 dirRead _ _ _ _ fsItem c =
   let fsItems = cFSItems c
       -- remove the trailing slash of the directory
-      dirname = (stName . dStat . fDetails) fsItem
+      dirname = (dAbsoluteName . fDetails) fsItem
       childrenStats =
         (V.map (dStat . fDetails) .
          V.filter (belongsToDir (traceShowId dirname)))
@@ -277,15 +288,8 @@ dirRead _ _ _ _ fsItem c =
 belongsToDir :: RawFilePath -> FSItem Context -> Bool
 belongsToDir fp fsItem
                 -- is the same item
-  | fp == (stName . dStat . fDetails) fsItem = False
-  | otherwise = fp == (takeDirectory . stName . dStat . fDetails) fsItem
-
-belongsToDir1 fp fsItem
-  | fType fsItem == Directory =
-    fp == (takeDirectory . stName . dStat . fDetails) fsItem
-  | fType fsItem == File =
-    fp == (takeDirectory . stName . dStat . fDetails) fsItem
-  | otherwise = False
+  | fp == (dAbsoluteName . fDetails) fsItem = False
+  | otherwise = fp == (takeDirectory . dAbsoluteName . fDetails) fsItem
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid
@@ -335,13 +339,8 @@ writeStat _ stat fidState me c =
         c {cFSItems = V.modify (\v -> DVM.write v index newFSItem) (cFSItems c)}
   in (Nothing, updatedContext)
 
-dirStat, fileStat :: FSItemsIndex -> Stat
-dirStat = initialStat Qid.Directory
-
-fileStat = initialStat Qid.File
-
-initialStat :: QType -> FSItemsIndex -> Stat
-initialStat Qid.Directory index =
+dirStat :: FSItemsIndex -> Stat
+dirStat index =
   Stat
   { stTyp = 0
   , stDev = 0
@@ -366,11 +365,13 @@ initialStat Qid.Directory index =
   , stGid = "root"
   , stMuid = "root"
   }
-initialStat Qid.File index =
+
+fileStat :: FSItemsIndex -> Stat
+fileStat index = -- if it is not a directory, it is a file
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [Qid.File, Qid.AppendOnlyFile] 0 index
+  , stQid = Qid [Qid.AppendOnly] 0 index
   , stMode =
       [ OtherExecutePermission
       , OtherWritePermission
@@ -391,14 +392,14 @@ initialStat Qid.File index =
   , stGid = "root"
   , stMuid = "root"
   }
-initialStat _ index = nullStat index
+-- initialStat _ index = nullStat index
 
 nullStat :: FSItemsIndex -> Stat
 nullStat index =
   Stat
   { stTyp = 0
   , stDev = 0
-  , stQid = Qid [Qid.AppendOnlyFile] 0 index
+  , stQid = Qid [Qid.AppendOnly] 0 index
   , stMode =
       [ OtherExecutePermission
       , OtherWritePermission
@@ -479,14 +480,14 @@ buildQid fsItems path =
      (fsItems V.!? fsItemIndex) >>= \fsitem ->
        Just
          (Qid
-            [fsItemToQType fsitem]
+            (stModeToQType fsitem)
             ((dVersion . fDetails) fsitem)
             (fromIntegral fsItemIndex)))
 
 hasName :: RawFilePath -> FSItem Context -> Bool
 hasName name fsitem =
   let normalizedName = normalizePath name
-  in normalizedName == (normalizePath . stName . dStat . fDetails) fsitem
+  in normalizedName == (normalizePath . dAbsoluteName . fDetails) fsitem
 
 fileWalk
   :: NewFid

@@ -23,7 +23,7 @@ import BitMask
 import           Data.NineP
 import           Data.NineP.Qid  hiding (Directory)
 import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat hiding (Directory)
+import           Data.NineP.Stat hiding (Directory,AppendOnly)
 import qualified Data.NineP.Stat as Stat
 
 --
@@ -46,6 +46,7 @@ tests =
     , testCase "testVersion04" testVersion04
     , testCase "testAttach01" testAttach01
     , testCase "testStat01" testStat01
+    , testCase "testStat02" testStat02
     , testCase "testClunk01" testClunk01
     , testCase "testWalk01" testWalk01
     , testCase "testWalk02" testWalk02
@@ -152,7 +153,7 @@ testWalk04 =
       statresult = stat (Tstat 0) (snd attachresult)
       result = walk (Twalk 0 1 ["dir1", "in"]) (snd statresult)
   in fst result @?=
-     Right (Rwalk [Qid [Qid.Directory] 0 3, Qid [Qid.File, AppendOnlyFile] 0 4])
+     Right (Rwalk [Qid [Qid.Directory] 0 3, Qid [AppendOnly] 0 4])
 
 testWalk05 :: Assertion
 testWalk05 =
@@ -160,7 +161,7 @@ testWalk05 =
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["dir1"]) (snd statresult)
       result = walk (Twalk 1 2 ["in"]) (snd walkresult)
-  in fst result @?= Right (Rwalk [Qid [Qid.File, AppendOnlyFile] 0 4])
+  in fst result @?= Right (Rwalk [Qid [AppendOnly] 0 4])
 
 testOpenWrite :: Assertion
 testOpenWrite = do
@@ -168,7 +169,7 @@ testOpenWrite = do
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
   result <- open (Topen 1 Write) (snd walkresult)
-  fst result @?= Right (Ropen (Qid [Qid.File] 0 1) 8169)
+  fst result @?= Right (Ropen (Qid [] 0 1) 8169)
 
 testOpenRead :: Assertion
 testOpenRead = do
@@ -176,7 +177,7 @@ testOpenRead = do
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["out"]) (snd statresult)
   result <- open (Topen 1 Read) (snd walkresult)
-  fst result @?= Right (Ropen (Qid [Qid.File] 0 2) 8169)
+  fst result @?= Right (Ropen (Qid [] 0 2) 8169)
 
 testClunk02 :: Assertion
 testClunk02 = do
@@ -184,7 +185,7 @@ testClunk02 = do
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
   openresult <- open (Topen 1 Write) (snd walkresult)
-  fst openresult @?= Right (Ropen (Qid [Qid.File] 0 1) 8169)
+  fst openresult @?= Right (Ropen (Qid [] 0 1) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
     [(0, FidState Nothing 0), (1, FidState Nothing 1)]
   let result = clunk (Tclunk 1) (snd openresult)
@@ -222,6 +223,43 @@ testReadDirectoryRoot = do
     Right
       ((Rread . BS.concat . fmap statBS)
          [sampleFile "/in" 1, sampleFile "/out" 2, sampleDir "/dir1" 3])
+
+testStat02 :: Assertion
+testStat02 =
+  let attachresult = attach (Tattach 0 0xffffffff "root" "") sampleContext
+      statresult = stat (Tstat 0) (snd attachresult)
+      walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
+      result = stat (Tstat 1) (snd walkresult)
+  in fst result @?=
+     Right
+       (Rstat
+        { rsStat =
+            Stat
+            { stTyp = 0
+            , stDev = 0
+            , stQid = Qid {qType = [AppendOnly], qversion = 0, qPath = 1}
+            , stMode =
+                [ OtherExecutePermission
+                , OtherWritePermission
+                , OtherReadPermission
+                , GroupExecutePermission
+                , GroupWritePermission
+                , GroupReadPermission
+                , UserExecutePermission
+                , UserWritePermission
+                , UserReadPermission
+                , Stat.AppendOnly
+                ]
+            , stAtime = 0
+            , stMtime = 0
+            , stLength = 0
+            , stName = "in"
+            , stUid = "root"
+            , stGid = "root"
+            , stMuid = "root"
+            }
+        })
+
 -- testIdentifyStateChanges02 :: Assertion
 -- testIdentifyStateChanges02 =
 --   (identifyStateChanges (def {sDepressedModifiers = 1}) def) @?=

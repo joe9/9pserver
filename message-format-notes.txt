@@ -1,0 +1,127 @@
+got the below by using
+-- socat -x TCP-LISTEN:4444 TCP:localhost:5960 # to see the hexdump of the communication with a port
+
+
+
+ 48 00 00 00 -- len = 72
+ 75 -- Rread
+ 01 00 -- tag 1
+ 3d 00 00 00 -- count = 61
+ 33 00 = size = 51
+ 00 00 = type
+ 00 00 = dev
+ 00 = qid.type
+ 00 41 00 00 = qid.version
+ 00 00 01 00 00 00 00 00 = qid.path
+ 00 00 ff 01 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 00 2f 69 6e 03 00 31 30 31 03 00 31 30 30 03 00 31 30 31
+1477414299
+
+
+> Tstat 2016/10/25 09:55:30.505609  length=11 from=215 to=225
+ 0b 00 00 00 7c 01 00 00 00 00 00
+< Rstat 2016/10/25 09:55:30.509628  length=71 from=550 to=620
+ 47 00 00 00 7d 01 00 3e 00 34 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 00 80 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 2f 04 00 72 6f 6f 74 04 00 72 6f 6f 74 04 00 72 6f 6f 74
+> Twalk 2016/10/25 09:55:30.510599  length=17 from=226 to=242
+ 11 00 00 00 6e 01 00 00 00 00 00 01 00 00 00 00 00
+< Rwalk 2016/10/25 09:55:30.511809  length=9 from=621 to=629
+ 09 00 00 00 6f 01 00 00 00
+> Topen 2016/10/25 09:55:30.512079  length=12 from=243 to=254
+ 0c 00 00 00 70 01 00 01 00 00 00 00
+< Ropen 2016/10/25 09:55:30.512758  length=24 from=630 to=653
+ 18 00 00 00 71 01 00 80 00 00 00 00 00 00 00 00 00 00 00 00 e9 1f 00 00
+> Tstat 2016/10/25 09:55:30.513257  length=11 from=255 to=265
+ 0b 00 00 00 7c 01 00 00 00 00 00
+< Rstat 2016/10/25 09:55:30.516361  length=71 from=654 to=724
+ 47 00 00 00 7d 01 00 3e 00 34 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 00 80 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 2f 04 00 72 6f 6f 74 04 00 72 6f 6f 74 04 00 72 6f 6f 74
+> Tread 2016/10/25 09:55:30.516793  length=23 from=266 to=288
+ 17 00 00 00 74 01 00 01 00 00 00 00 00 00 00 00 00 00 00 e8 1f 00 00
+< Rread 2016/10/25 09:55:30.519539  length=74 from=725 to=798
+ 4a 00 00 00 size = 74
+ 75 Rread
+ 01 00 tag = 1
+ 3f 00 00 00 count = 63
+ 35 00 stat.size = 61
+(2) 00 00 stat.type = 0
+(6) 00 00 00 00 stat.dev = 0
+(7) 41 qid.type = 0th bit = QTFILE , 6th bit = QTAPPEND
+-- #define QTDIR		0x80		/* type bit for directories */
+-- #define QTAPPEND	0x40		/* type bit for append only files */
+-- #define QTEXCL		0x20		/* type bit for exclusive use files */
+-- #define QTMOUNT		0x10		/* type bit for mounted channel */
+-- #define QTAUTH		0x08		/* type bit for authentication file */
+-- #define QTTMP		0x04		/* type bit for non-backed-up file */
+-- #define QTSYMLINK	0x02		/* type bit for symbolic link */
+-- #define QTFILE		0x00		/* type bits for plain file */
+<joe9> https://paste.pound-python.org/show/xTT5iqD66EUNZ1HAwAH1/ I still have a question regarding Qid.type
+<joe9> I understand that the Stat.mode is a File (by default). do not need to set the bit
+<joe9> But, For Qid.type, the 1st bit or (0th bit - when zero-indexed) can be set to indicate a plain file.  [10:40]
+<joe9> Is there any reason, why you mentioned that 0x01 is illegal?
+<joe9> https://gist.github.com/2e8d9f16f093dd8ebcedcad9d8c4b52c is the more detailed version of the notes.  [10:49]
+<zhasha> bit 0 doesn't say anything about it being a file
+<zhasha> it's a file if QTDIR isn't set
+<zhasha> QTFILE is just a #define to make your intention clear  [10:50]
+<joe9> " The name QTFILE, defined to be zero, identifies the value of the type for a plain file. " -- last line of http://man2.aiju.de/5/0intro  [10:51]
+<zhasha> so when does zero become one?
+<zhasha> it's not the zero'th bit. it's the number zero  [10:52]
+<zhasha> as in qid.type == 0 means it's a regular plain file with no special anything
+<joe9> ok, Thanks.
+(11) 00 00 00 00 qid.version = 0
+(19) 01 00 00 00 00 00 00 00 qid.path
+(23) ff 01 00 40 mode = 40 00 01 ff (in big endian)
+  Bit
+    0 OtherExecutePermission
+    1 OtherWritePermission
+    2 OtherReadPermission
+    3 GroupExecutePermission
+    4 GroupWritePermission
+    5 GroupReadPermission
+    6 UserExecutePermission
+    7 UserWritePermission
+    8 UserReadPermission
+   26 Temp
+   27 Authentication
+   29 ExclusiveUse
+   30 AppendOnly
+   31 Directory
+
+(27) 00 00 00 00 atime
+(31) 00 00 00 00 mtime
+(39) 00 00 00 00 00 00 00 00 length
+(41) 02 00 size of name = 2
+(43) 69 6e name = in
+(45) 04 00 size of uid = owner name
+(49) 72 6f 6f 74 = root
+(51) 04 00 size of gid = group name
+(55) 72 6f 6f 74 = root
+(57) 04 00 = size of muid
+(61) 72 6f 6f 74 = root
+
+> Tread 2016/10/25 09:55:30.520014  length=23 from=289 to=311
+ 17 00 00 00 74 01 00 01 00 00 00 3f 00 00 00 00 00 00 00 a9 1f 00 00
+< Rread 2016/10/25 09:55:30.521605  length=11 from=799 to=809
+ 0b 00 00 00 75 01 00 00 00 00 00
+
+> Twalk 2016/10/25 09:55:30.521860  length=21 from=312 to=332
+ 15 00 00 00 6e 01 00 00 00 00 00 02 00 00 00 01 00 02 00 69 6e
+< Rwalk 2016/10/25 09:55:30.523879  length=22 from=810 to=831
+ 16 00 00 00 6f 01 00 01 00 41 00 00 00 00 01 00 00 00 00 00 00 00
+
+> Tstat 2016/10/25 09:55:30.524138  length=11 from=333 to=343
+ 0b 00 00 00 7c 01 00 02 00 00 00
+< Rstat 2016/10/25 09:55:30.527750  length=72 from=832 to=903
+ 48 00 00 00 7d 01 00 3f 00 35 00 00 00 00 00 00 00 41 00 00 00 00 01 00 00 00 00 00 00 00 ff 01 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 69 6e 04 00 72 6f 6f 74 04 00 72 6f 6f 74 04 00 72 6f 6f 74
+
+> Tstat 2016/10/25 09:55:30.528161  length=11 from=344 to=354
+ 0b 00 00 00 7c 01 00 02 00 00 00
+< Rstat 2016/10/25 09:55:30.531211  length=72 from=904 to=975
+ 48 00 00 00 7d 01 00 3f 00 35 00 00 00 00 00 00 00 41 00 00 00 00 01 00 00 00 00 00 00 00 ff 01 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 69 6e 04 00 72 6f 6f 74 04 00 72 6f 6f 74 04 00 72 6f 6f 74
+
+> Tclunk 2016/10/25 09:55:30.531601  length=11 from=355 to=365
+ 0b 00 00 00 78 01 00 02 00 00 00
+< Rclunk 2016/10/25 09:55:30.532384  length=7 from=976 to=982
+ 07 00 00 00 79 01 00
+
+> Tclunk 2016/10/25 09:55:30.532738  length=11 from=366 to=376
+ 0b 00 00 00 78 01 00 01 00 00 00
+< Rclunk 2016/10/25 09:55:30.533486  length=7 from=983 to=989
+ 07 00 00 00 79 01 00

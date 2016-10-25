@@ -19,9 +19,9 @@ import           System.Posix.FilePath
 import           Text.Groom
 
 import           Data.NineP
-import           Data.NineP.Qid  hiding (Directory, File)
+import           Data.NineP.Qid
 import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat hiding (Directory)
+import           Data.NineP.Stat
 import qualified Data.NineP.Stat as Stat
 
 import Network.NineP.Error
@@ -93,14 +93,13 @@ import Network.NineP.Error
 -- <geekosaur> yes. this is going to be true of any structure  [08:58]
 -- <joe9> geekosaur: http://dpaste.com/3NDWKQK is the relevant file ADT
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
-data FSItemType
-  = Directory
-  | File
-  | None
-  deriving (Eq, Show)
+
+-- if an item is removed, switch the Used to False.
+-- this is to avoid vector indexes getting changed when a delete happens
+data Occupied = Occupied | Vacant deriving (Eq, Show)
 
 data FSItem s = FSItem
-  { fType     :: FSItemType
+  { fOccupied :: Occupied
   , fDetails  :: Details s
   , fOpenFids :: [Fid]
   }
@@ -108,7 +107,7 @@ data FSItem s = FSItem
 instance Show (FSItem s) where
   show f =
     unwords
-      [ groom (fType f)
+      [ (groom . fOccupied) f
       , (groom . dVersion . fDetails) f
       , (groom . dStat . fDetails) f
       , groom (fOpenFids f)
@@ -156,16 +155,22 @@ data Details s = Details
   , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
   , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dVersion :: Word32
+  , dAbsoluteName :: RawFilePath
   }
 
 --   , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
-fsItemToQType :: FSItem Context -> QType
-fsItemToQType fsitem
-  | fType fsitem == Directory = Qid.Directory
-  | fType fsitem == File = Qid.File
-  | otherwise = Qid.File
+stModeToQType :: FSItem Context -> [QType]
+stModeToQType fsItem =
+  let mode = (stMode . dStat . fDetails) fsItem
+  in ((\ts -> if elem Stat.Temp mode then Qid.NonBackedUp : ts else ts)
+      . (\ts -> if elem Stat.Authentication mode then Qid.Authentication : ts else ts)
+      . (\ts -> if elem Stat.ExclusiveUse mode then Qid.ExclusiveUse : ts else ts)
+      . (\ts -> if elem Stat.AppendOnly mode then Qid.AppendOnly : ts else ts)
+      . (\ts -> if elem Stat.Directory mode then Qid.Directory : ts else ts)
+     ) []
 
 -- TODO : Add to FileSystem
 instance Default Context where
   def = Context HashMap.empty V.empty 8192 []
+--   def = Context HashMap.empty V.empty 512 []
 --   def = Context HashMap.empty sampleFSItemsList 8192 []
