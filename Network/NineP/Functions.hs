@@ -394,8 +394,8 @@ fileStat index = -- if it is not a directory, it is a file
   }
 -- initialStat _ index = nullStat index
 
-nullStat :: FSItemsIndex -> Stat
-nullStat index =
+vacantStat :: FSItemsIndex -> Stat
+vacantStat index =
   Stat
   { stTyp = 0
   , stDev = 0
