@@ -62,6 +62,7 @@ tests =
     , testCase "testClunk02" testClunk02
     , testCase "testReadDirectoryDir1" testReadDirectoryDir1
     , testCase "testReadDirectoryRoot" testReadDirectoryRoot
+    , testCase "testWrite01" testWrite01
     ]
 
 testContext :: Context
@@ -187,7 +188,7 @@ testOpenWrite = do
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
   result <- open (Topen 1 Write) (snd walkresult)
-  fst result @?= Right (Ropen (Qid [] 0 1) 8169)
+  fst result @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
 
 testOpenRead :: Assertion
 testOpenRead = do
@@ -203,7 +204,7 @@ testClunk02 = do
       statresult = stat (Tstat 0) (snd attachresult)
       walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
   openresult <- open (Topen 1 Write) (snd walkresult)
-  fst openresult @?= Right (Ropen (Qid [] 0 1) 8169)
+  fst openresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
     [(0, FidState Nothing 0), (1, FidState Nothing 1)]
   let result = clunk (Tclunk 1) (snd openresult)
@@ -302,37 +303,17 @@ testStatReadOnlyFile =
         })
 
 testWrite01 :: Assertion
-testWrite01 =
+testWrite01 = do
   let attachresult = attach (Tattach 0 0xffffffff "root" "") testContext
       statresult = stat (Tstat 0) (snd attachresult)
-      walkresult = walk (Twalk 0 1 ["in"]) (snd statresult)
-      result = stat (Tstat 1) (snd walkresult)
-  in fst result @?=
-     Right
-       (Rstat
-        { rsStat =
-            Stat
-            { stTyp = 0
-            , stDev = 0
-            , stQid = Qid {qType = [AppendOnly], qversion = 0, qPath = 1}
-            , stMode =
-                [ OtherExecutePermission
-                , OtherWritePermission
-                , OtherReadPermission
-                , GroupExecutePermission
-                , GroupWritePermission
-                , GroupReadPermission
-                , UserExecutePermission
-                , UserWritePermission
-                , UserReadPermission
-                , Stat.AppendOnly
-                ]
-            , stAtime = 0
-            , stMtime = 0
-            , stLength = 0
-            , stName = "in"
-            , stUid = "root"
-            , stGid = "root"
-            , stMuid = "root"
-            }
-        })
+      outwalkresult = walk (Twalk 0 1 ["out"]) (snd statresult)
+  outopenresult <- open (Topen 1 Read) (snd outwalkresult)
+  fst outopenresult @?= Right (Ropen (Qid [] 0 2) 8169)
+  let inwalkresult = walk (Twalk 0 2 ["in"]) (snd outopenresult)
+  inopenresult <- open (Topen 2 Write) (snd inwalkresult)
+  fst inopenresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
+  let writeContents = "testing write" :: BS.ByteString
+  writeresult <- write (Twrite 2 0 writeContents) (snd inopenresult)
+  readresult <-
+    read (Tread 1 0 (fromIntegral (BS.length writeContents))) (snd writeresult)
+  Rread writeContents @?= either (\_ -> Rread BS.empty) identity readresult

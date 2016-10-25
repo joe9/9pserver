@@ -196,14 +196,14 @@ read (Tread fid offset@(0) count) c =
 read _ _ = return ((Right . Rread) BS.empty)
 
 write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
-write (Twrite fid offset count) c =
+write (Twrite fid offset dat) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just fds ->
       case (cFSItems c) V.!? (fidFSItemsIndex fds) of
         Nothing -> return (rerror EInval, c)
         Just d -> do
-          result <- ((dWrite . fDetails) d) fid offset count fds d c
+          result <- ((dWrite . fDetails) d) fid offset dat fds d c
           return (runEitherFunction result Rwrite)
 
 checkBlockedReads :: Context -> IO ([(Tag, Rerror)], Context)

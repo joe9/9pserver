@@ -161,7 +161,7 @@ dirAttach
   -> Context
   -> (Either NineError Qid, Context)
 dirAttach fid _ _ _ i d c =
-  ( Right (Qid [Qid.Directory] ((dVersion . fDetails) d) (fromIntegral i))
+  ( Right ((stQid . dStat . fDetails) d)
   , c {cFids = HashMap.insert fid (FidState Nothing i) (cFids c)})
 
 fileAttach
@@ -200,27 +200,20 @@ fileOpen fid mode fidState me c
   | mode == Read && isJust (fidQueue fidState) -- OREAD and Q already exists
    =
     return
-      ( Right
-          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
-          , iounit)
+      ( Right ((stQid . dStat . fDetails) me , iounit)
       , c)
   | mode == Read -- OREAD
    = do
     readQ <- newTQueueIO
     return
-      ( Right
-          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
-          , iounit)
+      ( Right ((stQid . dStat . fDetails) me , iounit)
       , c
         { cFids =
             HashMap.insert fid (fidState {fidQueue = Just readQ}) (cFids c)
         })
   | otherwise =
     return
-      ( Right
-          ( Qid [] ((dVersion . fDetails) me) (fidFSItemsIndex fidState)
-          , iounit)
-      , c)
+      ( Right ((stQid . dStat . fDetails) me , iounit) , c)
   where
     iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
 
@@ -237,12 +230,7 @@ dirOpen
 dirOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
-       ( Right
-           ( Qid
-               [Qid.Directory]
-               ((dVersion . fDetails) me)
-               (fidFSItemsIndex fidState)
-           , iounit)
+       ( Right ((stQid . dStat . fDetails) me , iounit)
        , c
          {cFids = HashMap.insert fid (fidState {fidQueue = Nothing}) (cFids c)})
 
@@ -432,67 +420,67 @@ vacantStat index =
   }
 
 -- TODO implement ".." - walk to the parent directory
-fdWalk
-  :: Fid
-  -> NewFid
-  -> [ByteString]
-  -> FidState
-  -> FSItem Context
-  -> Context
-  -> (Either NineError [Qid], Context)
-fdWalk _ newfid [] fidState _ c =
-  ( Right []
-  , c {cFids = HashMap.insert newfid (fidState {fidQueue = Nothing}) (cFids c)})
-fdWalk fid newfid nwnames _ d c
-  | V.length fsItems > 1 =
-    ( Left
-        (OtherError
-           (BS.append
-              "dirWalk: Multiple FSItems with the same name found"
-              (joinPath nwnames)))
-    , c)
-  | V.length fsItems == 0 =
-    let qids =
-          traceShowId
-            ((catMaybes .
-              takeWhile isJust .
-              fmap (buildQid (cFSItems c)) . scanl' combine fidName)
-               nwnames)
-    in (Right qids, c)
-  | otherwise =
-    let qids =
-          traceShowId
-            ((catMaybes . fmap (buildQid (cFSItems c)) . scanl' combine fidName)
-               nwnames)
-    in ( Right qids
-       , c
-         { cFids =
-             HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)
-         })
-  where
-    fidName = (stName . dStat . fDetails) d
-    fsItems =
-      traceShowId
-        (V.findIndices
-           (hasName (traceShowId (combine fidName (joinPath nwnames))))
-           (cFSItems c))
-    fsItemIndex = V.head (traceShowId fsItems)
+-- fdWalk
+--   :: Fid
+--   -> NewFid
+--   -> [ByteString]
+--   -> FidState
+--   -> FSItem Context
+--   -> Context
+--   -> (Either NineError [Qid], Context)
+-- fdWalk _ newfid [] fidState _ c =
+--   ( Right []
+--   , c {cFids = HashMap.insert newfid (fidState {fidQueue = Nothing}) (cFids c)})
+-- fdWalk fid newfid nwnames _ d c
+--   | V.length fsItems > 1 =
+--     ( Left
+--         (OtherError
+--            (BS.append
+--               "dirWalk: Multiple FSItems with the same name found"
+--               (joinPath nwnames)))
+--     , c)
+--   | V.length fsItems == 0 =
+--     let qids =
+--           traceShowId
+--             ((catMaybes .
+--               takeWhile isJust .
+--               fmap (buildQid (cFSItems c)) . scanl' combine fidName)
+--                nwnames)
+--     in (Right qids, c)
+--   | otherwise =
+--     let qids =
+--           traceShowId
+--             ((catMaybes . fmap (buildQid (cFSItems c)) . scanl' combine fidName)
+--                nwnames)
+--     in ( Right qids
+--        , c
+--          { cFids =
+--              HashMap.insert newfid (FidState Nothing fsItemIndex) (cFids c)
+--          })
+--   where
+--     fidName = (stName . dStat . fDetails) d
+--     fsItems =
+--       traceShowId
+--         (V.findIndices
+--            (hasName (traceShowId (combine fidName (joinPath nwnames))))
+--            (cFSItems c))
+--     fsItemIndex = V.head (traceShowId fsItems)
 
 --     fsItem = fromMaybe d ((cFSItems c) V.!? fsItemIndex)
 -- convert of "//" to "/"
 normalizePath :: RawFilePath -> RawFilePath
 normalizePath = joinPath . splitDirectories
 
-buildQid :: Vector (FSItem Context) -> RawFilePath -> Maybe Qid
-buildQid fsItems path =
-  V.findIndex (hasName path) fsItems >>=
-  (\fsItemIndex ->
-     (fsItems V.!? fsItemIndex) >>= \fsitem ->
-       Just
-         (Qid
-            (stModeToQType fsitem)
-            ((dVersion . fDetails) fsitem)
-            (fromIntegral fsItemIndex)))
+-- buildQid :: Vector (FSItem Context) -> RawFilePath -> Maybe Qid
+-- buildQid fsItems path =
+--   V.findIndex (hasName path) fsItems >>=
+--   (\fsItemIndex ->
+--      (fsItems V.!? fsItemIndex) >>= \fsitem ->
+--        Just
+--          (Qid
+--             (stModeToQType fsitem)
+--             ((dVersion . fDetails) fsitem)
+--             (fromIntegral fsItemIndex)))
 
 hasName :: RawFilePath -> FSItem Context -> Bool
 hasName name fsitem =
@@ -546,11 +534,6 @@ dirWalk newfid name parentQids (f:fs) c =
           ((dWalk . fDetails) fsItem)
             newfid
             (combine name f)
-            (parentQids ++
-             [ Qid
-                 ((qType . stQid . dStat . fDetails) fsItem)
-                 ((dVersion . fDetails) fsItem)
-                 fsItemsIndex
-             ])
+            (parentQids ++ [(stQid . dStat . fDetails) fsItem])
             fs
             c
