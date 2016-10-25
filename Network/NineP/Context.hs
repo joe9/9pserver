@@ -6,7 +6,7 @@ module Network.NineP.Context where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.Default
-import           Data.HashMap.Strict              as HashMap
+import qualified Data.HashMap.Strict              as HashMap
 import           Data.List
 import           Data.Serialize
 import           Data.Vector                      (Vector)
@@ -93,10 +93,12 @@ import Network.NineP.Error
 -- <geekosaur> yes. this is going to be true of any structure  [08:58]
 -- <joe9> geekosaur: http://dpaste.com/3NDWKQK is the relevant file ADT
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
-
 -- if an item is removed, switch the Used to False.
 -- this is to avoid vector indexes getting changed when a delete happens
-data Occupied = Occupied | Vacant deriving (Eq, Show)
+data Occupied
+  = Occupied
+  | Vacant
+  deriving (Eq, Show)
 
 data FSItem s = FSItem
   { fOccupied :: Occupied
@@ -158,19 +160,45 @@ data Details s = Details
   , dAbsoluteName :: RawFilePath
   }
 
---   , dWalk :: NewFid -> ByteString -> [Qid] -> [ByteString] -> FSItemsIndex -> FSItem Context -> Context -> (Either NineError [Qid], Context)
+-- stModeToQType :: FSItem Context -> [QType]
+-- stModeToQType fsItem =
+--   let mode = (stMode . dStat . fDetails) fsItem
+--   in ((\ts ->
+--          if elem Stat.Temp mode
+--            then Qid.NonBackedUp : ts
+--            else ts) .
+--       (\ts ->
+--          if elem Stat.Authentication mode
+--            then Qid.Authentication : ts
+--            else ts) .
+--       (\ts ->
+--          if elem Stat.ExclusiveUse mode
+--            then Qid.ExclusiveUse : ts
+--            else ts) .
+--       (\ts ->
+--          if elem Stat.AppendOnly mode
+--            then Qid.AppendOnly : ts
+--            else ts) .
+--       (\ts ->
+--          if elem Stat.Directory mode
+--            then Qid.Directory : ts
+--            else ts))
+--        []
 stModeToQType :: FSItem Context -> [QType]
 stModeToQType fsItem =
   let mode = (stMode . dStat . fDetails) fsItem
-  in ((\ts -> if elem Stat.Temp mode then Qid.NonBackedUp : ts else ts)
-      . (\ts -> if elem Stat.Authentication mode then Qid.Authentication : ts else ts)
-      . (\ts -> if elem Stat.ExclusiveUse mode then Qid.ExclusiveUse : ts else ts)
-      . (\ts -> if elem Stat.AppendOnly mode then Qid.AppendOnly : ts else ts)
-      . (\ts -> if elem Stat.Directory mode then Qid.Directory : ts else ts)
-     ) []
+  in mapMaybe
+       ((flip lookup)
+          [ (Stat.Temp, Qid.NonBackedUp)
+          , (Stat.Authentication, Qid.Authentication)
+          , (Stat.ExclusiveUse, Qid.ExclusiveUse)
+          , (Stat.AppendOnly, Qid.AppendOnly)
+          , (Stat.Directory, Qid.Directory)
+          ])
+       mode
 
 -- TODO : Add to FileSystem
 instance Default Context where
   def = Context HashMap.empty V.empty 8192 []
---   def = Context HashMap.empty V.empty 512 []
+  --   def = Context HashMap.empty V.empty 512 []
 --   def = Context HashMap.empty sampleFSItemsList 8192 []
