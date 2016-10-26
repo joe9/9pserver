@@ -39,11 +39,11 @@ import Network.NineP.Response
 
 -- |Run the actual server using the supplied configuration.
 -- TODO move the below socket stuff to the Context
-run9PServer :: Context -> IO ()
-run9PServer context = do
+run9PServer :: Context -> HostPreference -> ServiceName -> IO ()
+run9PServer context hostPreference serviceName = do
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
-  serve (Host "127.0.0.1") "5960" $ \(connectionSocket, remoteAddr) -> do
+  serve hostPreference serviceName $ \(connectionSocket, remoteAddr) -> do
     putStrLn $ "TCP connection established from " ++ show remoteAddr
     clientConnection connectionSocket remoteAddr context
 
@@ -221,7 +221,7 @@ furtherProcessing handle sendQ c = do
 sendLoop :: Handle -> TQueue ByteString -> IO ()
 sendLoop handle q = do
   bs <- atomically (readTQueue q)
-  BS.hPutNonBlocking handle bs
+  _ <- BS.hPutNonBlocking handle bs
   hFlush handle
   flushAll
   sendLoop handle q
