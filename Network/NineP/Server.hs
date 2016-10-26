@@ -106,7 +106,7 @@ process
   -> (ByteString, Context)
 process f tag msg c =
   case runGet get msg of
-    Left e -> (toNinePFormat (Rerror (cs e)) tag, c)
+    Left e -> (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
     Right d ->
       let result = f (traceShowId d) c
       in case traceShow (fst result) result of
@@ -125,11 +125,11 @@ processRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Tag
 processRead q tag msg c =
   case traceShowId (runGet get msg) of
     Left e ->
-      atomically (writeTQueue q (toNinePFormat (Rerror (cs e)) tag)) >>
+      atomically (writeTQueue q (toNinePFormat (traceShowId (Rerror (cs e))) tag)) >>
       return tag
     Right d -> do
       eitherResult <- read (traceShowId d) c
-      case eitherResult of
+      case traceShowId eitherResult of
         Left e -> atomically (writeTQueue q (toNinePFormat e tag)) >> return tag
         Right m ->
           atomically (writeTQueue q (toNinePFormat m tag)) >> return tag
@@ -142,7 +142,7 @@ processBlockedReads c = do
 -- TODO Not bothering with max string size.
 processIO
   :: forall t a.
-     (ToNinePFormat a, Serialize t)
+     (ToNinePFormat a, Serialize t, Show a, Show t)
   => (t -> Context -> IO (Either Rerror a, Context))
   -> Tag
   -> ByteString
@@ -150,10 +150,10 @@ processIO
   -> IO (ByteString, Context)
 processIO f tag msg c =
   case runGet get msg of
-    Left e -> return (toNinePFormat (Rerror (cs e)) tag, c)
+    Left e -> return (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
     Right d -> do
-      eitherResult <- f d c
-      case eitherResult of
+      eitherResult <- f (traceShowId d) c
+      case traceShow (fst eitherResult) eitherResult of
         (Left e, cn)  -> return (toNinePFormat e tag, cn)
         (Right m, cn) -> return (toNinePFormat m tag, cn)
 
@@ -175,18 +175,18 @@ getMessageHeaders = do
 eventLoop :: Handle -> TQueue ByteString -> Context -> IO () -- Context
 eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
-  case runGet getWord32le (traceShowId rawSize) of
+  case runGet getWord32le rawSize of
     Left e ->
       atomically
         (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) rawSize)) >>
       furtherProcessing handle sendQ context
     Right wsize -> do
-      let size = fromIntegral (traceShowId wsize)
+      let size = fromIntegral wsize
       if size < 5 -- Do I need this? minimum data required: 4 for size and 1 for tag
         then furtherProcessing handle sendQ context
         else do
           message <- BS.hGet handle (size - 4)
-          case runGetState getMessageHeaders (traceShowId message) 0 of
+          case runGetState getMessageHeaders message 0 of
             Left e ->
               atomically
                 (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
