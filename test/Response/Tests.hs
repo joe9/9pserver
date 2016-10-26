@@ -1,4 +1,3 @@
-{-# LANGUAGE BinaryLiterals    #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -6,7 +5,6 @@ module Response.Tests
   ( tests
   ) where
 
-import           Data.Bits
 import qualified Data.ByteString     as BS
 import           Data.Default
 import qualified Data.HashMap.Strict as HashMap
@@ -16,10 +14,6 @@ import           Protolude           hiding (get, put)
 import           Test.Tasty
 import           Test.Tasty.HUnit
 
---
-import BitMask
-
---
 import           Data.NineP
 import           Data.NineP.Qid  hiding (Directory)
 import qualified Data.NineP.Qid  as Qid
@@ -28,13 +22,9 @@ import qualified Data.NineP.Stat as Stat
 
 --
 import Network.NineP
-import Network.NineP.Context
 import Network.NineP.Directory
-import Network.NineP.Error
-import Network.NineP.Functions
 import Network.NineP.ReadOnlyFile
 import Network.NineP.Response
-import Network.NineP.Server
 import Network.NineP.WriteOnlyFile
 
 -- got this idea from

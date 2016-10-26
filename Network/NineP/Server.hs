@@ -14,6 +14,7 @@ import           Control.Concurrent.STM.TQueue
 import           Control.Exception.Safe        hiding (handle)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Char8 as BSC
 import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
 import qualified GHC.Base                      as Base
@@ -22,7 +23,7 @@ import           Network.Simple.TCP
 import           Network.Socket                (socketToHandle)
 import           Protolude                     hiding (bracket, get,
                                                 handle, msg)
-import           System.IO                     (BufferMode (BlockBuffering, NoBuffering),
+import           System.IO                     (BufferMode (BlockBuffering, NoBuffering, LineBuffering),
                                                 Handle,
                                                 IOMode (ReadWriteMode),
                                                 hClose, hFlush,
@@ -41,11 +42,13 @@ import Network.NineP.Response
 -- TODO move the below socket stuff to the Context
 run9PServer :: Context -> HostPreference -> ServiceName -> IO ()
 run9PServer context hostPreference serviceName = do
-  hSetBuffering stdout NoBuffering
-  hSetBuffering stderr NoBuffering
+  --   hSetBuffering stdout NoBuffering
+  --   hSetBuffering stderr NoBuffering
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering
   serve hostPreference serviceName $ \(connectionSocket, remoteAddr) -> do
-    putStrLn $ "TCP connection established from " ++ show remoteAddr
-    clientConnection connectionSocket remoteAddr context
+    putStrLn ( "TCP connection established from " ++ show remoteAddr)
+    clientConnection connectionSocket (traceShowId remoteAddr) context
 
 -- Now you may use connectionSocket as you please within this scope,
 -- possibly using recv and send to interact with the remote end.
