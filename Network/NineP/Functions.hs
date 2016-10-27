@@ -15,8 +15,10 @@ import qualified Data.Vector.Mutable              as DVM
 import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
+
 -- import           Text.Groom
 -- import           GHC.Show
+import BitMask
 
 import           Data.NineP
 import           Data.NineP.Qid  hiding (Directory)
@@ -88,10 +90,21 @@ dirDetails name index =
   , dAbsoluteName = fsItemAbsoluteName name
   }
 
-dirRemove :: Fid -> FidState -> FSItem Context -> Context -> (Maybe NineError, Context)
+dirRemove :: Fid
+          -> FidState
+          -> FSItem Context
+          -> Context
+          -> (Maybe NineError, Context)
 dirRemove _ _ _ c = (Just (OtherError "Not implemented"), c)
 
-dirWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem Context -> Context -> IO (Either NineError Count, Context)
+dirWrite
+  :: Fid
+  -> Offset
+  -> ByteString
+  -> FidState
+  -> FSItem Context
+  -> Context
+  -> IO (Either NineError Count, Context)
 dirWrite _ _ _ _ _ c = return (Left (OtherError "Not implemented"), c)
 
 fdFlush :: FSItem Context -> Context -> Context
@@ -102,7 +115,8 @@ fsItemName name
   | isRelative name =
     panic "fsItemName: file or directory name must be absolute"
   | name == "/" = name
-  | hasTrailingPathSeparator name = takeFileName (dropTrailingPathSeparator name)
+  | hasTrailingPathSeparator name =
+    takeFileName (dropTrailingPathSeparator name)
   | otherwise = takeFileName name
 
 fsItemAbsoluteName :: RawFilePath -> RawFilePath
@@ -198,22 +212,17 @@ fileOpen
   -> IO (Either NineError (Qid, IOUnit), Context)
 fileOpen fid mode fidState me c
   | mode == Read && isJust (fidQueue fidState) -- OREAD and Q already exists
-   =
-    return
-      ( Right ((stQid . dStat . fDetails) me , iounit)
-      , c)
+   = return (Right ((stQid . dStat . fDetails) me, iounit), c)
   | mode == Read -- OREAD
    = do
     readQ <- newTQueueIO
     return
-      ( Right ((stQid . dStat . fDetails) me , iounit)
+      ( Right ((stQid . dStat . fDetails) me, iounit)
       , c
         { cFids =
             HashMap.insert fid (fidState {fidQueue = Just readQ}) (cFids c)
         })
-  | otherwise =
-    return
-      ( Right ((stQid . dStat . fDetails) me , iounit) , c)
+  | otherwise = return (Right ((stQid . dStat . fDetails) me, iounit), c)
   where
     iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
 
@@ -230,7 +239,7 @@ dirOpen
 dirOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
-       ( Right ((stQid . dStat . fDetails) me , iounit)
+       ( Right ((stQid . dStat . fDetails) me, iounit)
        , c
          {cFids = HashMap.insert fid (fidState {fidQueue = Nothing}) (cFids c)})
 
@@ -247,7 +256,6 @@ dirOpen fid _ fidState me c =
 -- fileWrite _ _ bs (FidState (Just q) _) _ c = do
 --   atomically (writeTQueue q bs)
 --   return ((Right . fromIntegral . BS.length) bs, c)
-
 -- TODO check for permissions, iounit details, etc
 -- TODO ignoring offset and count
 fileRead
@@ -307,7 +315,7 @@ readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
 readStat _ me context = ((Right . dStat . fDetails) me, context)
 
 -- TODO check permissions when doing this
--- TODO allow more changes to stat as per the spec
+-- TODO , stQid    = Qid -- TODO
 writeStat
   :: Fid
   -> Stat
@@ -365,7 +373,8 @@ dirStat index =
   }
 
 fileStat :: FSItemsIndex -> Stat
-fileStat index = -- if it is not a directory, it is a file
+fileStat index -- if it is not a directory, it is a file
+ =
   Stat
   { stTyp = 0
   , stDev = 0
@@ -465,7 +474,6 @@ vacantStat index =
 --            (hasName (traceShowId (combine fidName (joinPath nwnames))))
 --            (cFSItems c))
 --     fsItemIndex = V.head (traceShowId fsItems)
-
 --     fsItem = fromMaybe d ((cFSItems c) V.!? fsItemIndex)
 -- convert of "//" to "/"
 normalizePath :: RawFilePath -> RawFilePath
@@ -481,7 +489,6 @@ normalizePath = joinPath . splitDirectories
 --             (stModeToQType fsitem)
 --             ((dVersion . fDetails) fsitem)
 --             (fromIntegral fsItemIndex)))
-
 hasName :: RawFilePath -> FSItem Context -> Bool
 hasName name fsitem =
   let normalizedName = normalizePath name
@@ -503,7 +510,7 @@ fileWalk newfid name parentQids [] c =
         { cFids =
             HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
         })
-fileWalk _ _ parentQids _ c = (Right parentQids , c)
+fileWalk _ _ parentQids _ c = (Right parentQids, c)
 
 findIndexUsingName :: RawFilePath -> Vector (FSItem Context) -> Maybe Int
 findIndexUsingName name = V.findIndex (hasName name)
