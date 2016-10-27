@@ -327,17 +327,46 @@ writeStat _ stat fidState me c =
   let oldstat = (dStat . fDetails) me
       updatedStat =
         oldstat
-        -- stTyp    = !Word16
-        -- , stDev    = !Word32
-        -- , stQid    = stQid stat
-        -- , stMode   = stMode stat
-        --                         , stAtime  = !Word32
-        { stMtime = stMtime stat
-          --                         , stLength = !Word64
-          --                         , stName   = !ByteString
-          --                         , stUid    = !ByteString
-          --                         , stGid    = !ByteString
-          --                         , stMuid   = !ByteString
+        { stTyp =
+            if stTyp stat == 0xffff -- don't touch value Word16
+              then stTyp oldstat
+              else stTyp stat
+        , stDev =
+            if stDev stat == 0xffffffff -- don't touch value Word32
+              then stDev oldstat
+              else stDev stat
+        , stMode =
+            if toBitMask (stMode stat) == 0xffffffff --don't touch value Word32
+              then stMode oldstat
+              else stMode stat
+        , stAtime =
+            if stAtime stat == 0xffffffff -- don't touch value Word32
+              then stAtime oldstat
+              else stAtime stat
+        , stMtime =
+            if stMtime stat == 0xffffffff -- don't touch value Word32
+              then stMtime oldstat
+              else stMtime stat
+        , stLength =
+            if stLength stat == 0xffffffffffffffff -- don't touch value Word64
+              then stLength oldstat
+              else stLength stat
+        , stName = -- should not be changing this
+            if BS.null (stName stat) -- don't touch value == ""
+              then stName oldstat
+              else stName stat
+        , stUid =
+            if BS.null (stUid stat) -- don't touch value == ""
+              then stUid oldstat
+              else stUid stat
+        , stGid =
+            if BS.null (stGid stat) -- don't touch value == ""
+              then stGid oldstat
+              else stGid stat
+        , stMuid =
+            if BS.null (stMuid stat) -- don't touch value == ""
+              then stMuid oldstat
+              else stMuid stat
         }
       newFSItem = me {fDetails = (fDetails me) {dStat = updatedStat}}
       index = fidFSItemsIndex fidState

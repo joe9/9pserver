@@ -125,3 +125,21 @@ got the below by using
  0b 00 00 00 78 01 00 01 00 00 00
 < Rclunk 2016/10/25 09:55:30.533486  length=7 from=983 to=989
  07 00 00 00 79 01 00
+
+> 2016/10/27 09:17:40.011734  length=62 from=682 to=743
+ 3e 00 00 00 size = 62
+ 7e Twstat
+ 03 00 tag = 3
+ 05 00 00 00 fid = 5
+ 31 00 count = 49
+ 2f 00 stat.size = 47
+ ff ff stat.type = don't touch
+ ff ff ff ff stat.dev = don't touch
+ ff qid.type = don't touch
+ ff ff ff ff qid.version = don't touch
+ ff ff ff ff ff ff ff ff qid.path = don't touch
+ ff ff ff ff stat.mode = don't touch
+ ff ff ff ff stat.atime = don't touch
+ a4 28 12 58 stat.mtime = 1477585060
+ 00 00 00 00 00 00 00 00 stat.length = 0
+ 00 00 00 00 00 00 00 00 don't touch uid, gid or muid
