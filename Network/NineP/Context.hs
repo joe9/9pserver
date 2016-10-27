@@ -130,13 +130,14 @@ data BlockedRead = BlockedRead
   , bAsync :: Async Tag
   }
 
-data Context = Context
+data Context u = Context
   { cFids           :: HashMap.HashMap Fid FidState
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
-  , cFSItems        :: Vector (FSItem Context)
+  , cFSItems        :: Vector (FSItem (Context u))
   , cMaxMessageSize :: Int
   , cBlockedReads   :: [BlockedRead]
+  , cUserState      :: u
   }
 
 type IOUnit = Word32
@@ -145,7 +146,7 @@ type IOUnit = Word32
 data Details s = Details
   { dOpen :: Fid -> OpenMode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
     --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
-  , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> Context -> (Either NineError [Qid], Context)
+  , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> s -> (Either NineError [Qid], s)
   , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
@@ -160,7 +161,7 @@ data Details s = Details
   , dAbsoluteName :: RawFilePath
   }
 
--- stModeToQType :: FSItem Context -> [QType]
+-- stModeToQType :: FSItem (Context u) -> [QType]
 -- stModeToQType fsItem =
 --   let mode = (stMode . dStat . fDetails) fsItem
 --   in ((\ts ->
@@ -184,7 +185,7 @@ data Details s = Details
 --            then Qid.Directory : ts
 --            else ts))
 --        []
-stModeToQType :: FSItem Context -> [QType]
+stModeToQType :: FSItem (Context u) -> [QType]
 stModeToQType fsItem =
   let mode = (stMode . dStat . fDetails) fsItem
   in mapMaybe
@@ -198,7 +199,7 @@ stModeToQType fsItem =
        mode
 
 -- TODO : Add to FileSystem
-instance Default Context where
-  def = Context HashMap.empty V.empty 8192 []
+instance Default u => Default (Context u) where
+  def = Context HashMap.empty V.empty 8192 [] def
   --   def = Context HashMap.empty V.empty 512 []
 --   def = Context HashMap.empty sampleFSItemsList 8192 []

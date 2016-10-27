@@ -22,7 +22,7 @@ import Network.NineP.Functions
 -- TODO Not bothering with T.chunksOf on size.
 -- assuming that the length of bytestring will be the same as that of
 -- Text for calculating msize using T.length
-version :: Tversion -> Context -> (Either Rerror Rversion, Context)
+version :: Tversion -> (Context u) -> (Either Rerror Rversion, (Context u))
 version (Tversion s tversion) context =
   let newSize = max (fromIntegral s) (cMaxMessageSize context)
       updatedContext =
@@ -32,7 +32,7 @@ version (Tversion s tversion) context =
   in ((Right . Rversion (fromIntegral newSize)) tversion, updatedContext)
 
 -- below for debugging
--- version :: Tversion -> Context -> (Either Rerror Rversion, Context)
+-- version :: Tversion -> (Context u) -> (Either Rerror Rversion, (Context u))
 -- version (Tversion s rversion) context =
 --   ( (Right . Rversion (fromIntegral 8192)) "9P2000"
 --      , context)
@@ -80,7 +80,7 @@ rerror = Left . Rerror . showNineError
 -- Not checking if afid == (u32int)~0, just not authenticating for all
 -- 0 == root directory path == index in cFSItems
 -- if fid is already in use, error out
-attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
+attach :: Tattach -> (Context u) -> (Either Rerror Rattach, (Context u))
 attach (Tattach fid afid uname aname) c =
   case HashMap.lookup fid (cFids c) of
     Nothing ->
@@ -97,7 +97,7 @@ attach (Tattach fid afid uname aname) c =
         else (rerror (OtherError "attach: invalid attach point"), c)
     Just _ -> (rerror (OtherError "attach: fid is already in use"), c)
 
--- qid :: Vector (FSItem Context) -> Int -> Either NineError Qid
+-- qid :: Vector (FSItem (Context u)) -> Int -> Either NineError Qid
 -- qid v i =
 --   case v V.!? i of
 --     Nothing -> Left EInval
@@ -107,7 +107,7 @@ attach (Tattach fid afid uname aname) c =
 --     -- TODO get the type from stat
 --     (Just (File f)) -> Right (Qid [NineP.File] (fVersion f) (fromIntegral i))
 -- -- 0 == root directory path == index in cFSItems
--- attach :: Tattach -> Context -> (Either Rerror Rattach, Context)
+-- attach :: Tattach -> (Context u) -> (Either Rerror Rattach, (Context u))
 -- attach (Tattach fid _ _ _) c =
 --   case qid (cFSItems c) 0 of
 --     Left e  -> ((Left . Rerror . showNineError) e, c)
@@ -115,16 +115,16 @@ attach (Tattach fid afid uname aname) c =
 --   where
 --     uc = c {cFids = HashMap.insert fid 0 (cFids c)}
 -- TODO The actual file is not removed on the server unless the fid had been opened with ORCLOSE.
-clunk :: Tclunk -> Context -> (Either Rerror Rclunk, Context)
+clunk :: Tclunk -> (Context u) -> (Either Rerror Rclunk, (Context u))
 clunk (Tclunk fid) c = maybe (rerror EInval, c) f ((cFSItems c) V.!? 0)
   where
     f d = runMaybeFunction (((dClunk . fDetails) d) fid d c) Rclunk
 
-flush :: Tflush -> Context -> (Either Rerror Rflush, Context)
+flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
 flush (Tflush _) c = (Right Rflush, c)
 
 --  TODO This request will fail if the client does not have write permission in the parent directory.
-remove :: Tremove -> Context -> (Either Rerror Rremove, Context)
+remove :: Tremove -> (Context u) -> (Either Rerror Rremove, (Context u))
 remove (Tremove fid) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
@@ -139,7 +139,7 @@ remove (Tremove fid) c =
 --     qid <- open f
 --     iou <- iounit
 --     return $ return $ Msg TRopen t $ Ropen qid iou
-open :: Topen -> Context -> IO (Either Rerror Ropen, Context)
+open :: Topen -> (Context u) -> IO (Either Rerror Ropen, (Context u))
 open (Topen fid mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
@@ -150,7 +150,7 @@ open (Topen fid mode) c =
           result <- ((dOpen . fDetails) d) fid mode fds d c
           return (runEitherFunction result (uncurry Ropen))
 
-create :: Tcreate -> Context -> (Either Rerror Rcreate, Context)
+create :: Tcreate -> (Context u) -> (Either Rerror Rcreate, (Context u))
 create (Tcreate fid name permissions mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
@@ -181,7 +181,7 @@ create (Tcreate fid name permissions mode) c =
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
 -- TODO split based on offset and count
-read :: Tread -> Context -> IO (Either Rerror Rread)
+read :: Tread -> (Context u) -> IO (Either Rerror Rread)
 read (Tread fid offset@(0) count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"))
@@ -195,7 +195,7 @@ read (Tread fid offset@(0) count) c =
             Right v -> return ((Right . Rread) v)
 read _ _ = return ((Right . Rread) BS.empty)
 
-write :: Twrite -> Context -> IO (Either Rerror Rwrite, Context)
+write :: Twrite -> (Context u) -> IO (Either Rerror Rwrite, (Context u))
 write (Twrite fid offset dat) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
@@ -206,7 +206,7 @@ write (Twrite fid offset dat) c =
           result <- ((dWrite . fDetails) d) fid offset dat fds d c
           return (runEitherFunction result Rwrite)
 
-checkBlockedReads :: Context -> IO ([(Tag, Rerror)], Context)
+checkBlockedReads :: (Context u) -> IO ([(Tag, Rerror)], (Context u))
 checkBlockedReads c = do
   checkeds <- (mapM checkBlockedRead . cBlockedReads) c
   let (blockedReads, responses) = partitionEithers checkeds
@@ -229,7 +229,7 @@ checkBlockedRead blockedRead = do
     -- completed successfully
     (Just (Right _)) -> return (Right Nothing)
 
-stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+stat :: Tstat -> (Context u) -> (Either Rerror Rstat, (Context u))
 stat (Tstat fid) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
@@ -237,7 +237,7 @@ stat (Tstat fid) c =
       maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
       where f d = runEitherFunction (((dReadStat . fDetails) d) fid d c) Rstat
 
-wstat :: Twstat -> Context -> (Either Rerror Rwstat, Context)
+wstat :: Twstat -> (Context u) -> (Either Rerror Rwstat, (Context u))
 wstat (Twstat fid stat) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> (rerror (ENoFile "fid cannot be found"), c)
@@ -249,7 +249,7 @@ wstat (Twstat fid stat) c =
                 Rwstat
 
 -- TODO ../
-walk :: Twalk -> Context -> (Either Rerror Rwalk, Context)
+walk :: Twalk -> (Context u) -> (Either Rerror Rwalk, (Context u))
 walk (Twalk fid newfid nwnames) c
   | isJust (HashMap.lookup newfid (cFids c)) && fid /= newfid =
     (rerror (OtherError "walk: proposed newfid is already in use"), c)
@@ -305,7 +305,7 @@ filterOutJustSlash = filter ((/=) "/")
 --     f <- lookup fid
 --     -- TODO implement
 --     return $ return $ Msg TRwstat t $ Rwstat
--- stat :: Tstat -> Context -> (Either Rerror Rstat, Context)
+-- stat :: Tstat -> (Context u) -> (Either Rerror Rstat, (Context u))
 -- stat (Tstat fid) c =
 --   case HashMap.lookup fid (cFids c) of
 --     Nothing -> ( (Left . Rerror . showNineError) (ENoFile "fid cannot be found"), c)

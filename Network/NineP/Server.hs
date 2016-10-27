@@ -40,7 +40,7 @@ import Network.NineP.Response
 
 -- |Run the actual server using the supplied configuration.
 -- TODO move the below socket stuff to the Context
-run9PServer :: Context -> HostPreference -> ServiceName -> IO ()
+run9PServer :: (Context u) -> HostPreference -> ServiceName -> IO ()
 run9PServer context hostPreference serviceName = do
   --   hSetBuffering stdout NoBuffering
   --   hSetBuffering stderr NoBuffering
@@ -54,7 +54,7 @@ run9PServer context hostPreference serviceName = do
 -- possibly using recv and send to interact with the remote end.
 -- got this from
 -- https://github.com/glguy/irc-core/blob/v2/src/Client/Network/Async.hs#L152
-clientConnection :: Socket -> a -> Context -> IO ()
+clientConnection :: Socket -> a -> (Context u) -> IO ()
 clientConnection connectionSocket _ context =
   bracket
     (socketToHandle connectionSocket ReadWriteMode)
@@ -82,8 +82,8 @@ toErrorMessage s bs = toNinePFormat (Rerror (BS.concat [s, ": ", bs])) 0
 processMessage :: MT.TransmitMessageType
                -> Tag
                -> ByteString
-               -> Context
-               -> (ByteString, Context)
+               -> (Context u)
+               -> (ByteString, (Context u))
 processMessage MT.Tversion = process version
 processMessage MT.Tattach  = process attach
 processMessage MT.Tclunk   = process clunk
@@ -97,13 +97,13 @@ processMessage _           = undefined
 
 -- TODO Not bothering with max string size.
 process
-  :: forall t a.
+  :: forall t a u.
      (ToNinePFormat a, Serialize t, Show t, Show a)
-  => (t -> Context -> (Either Rerror a, Context))
+  => (t -> (Context u) -> (Either Rerror a, (Context u)))
   -> Tag
   -> ByteString
-  -> Context
-  -> (ByteString, Context)
+  -> (Context u)
+  -> (ByteString, (Context u))
 process f tag msg c =
   case runGet get msg of
     Left e -> (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
@@ -115,13 +115,13 @@ process f tag msg c =
 
 -- TODO Not bothering with max string size.
 -- TODO split based on offset and count
-scheduleRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Context
+scheduleRead :: TQueue ByteString -> Tag -> ByteString -> (Context u) -> IO (Context u)
 scheduleRead q tag msg c = do
   asyncValue <- async (processRead q tag msg c)
   return (c {cBlockedReads = (BlockedRead tag asyncValue) : cBlockedReads c})
 
 -- TODO Not bothering with max string size.
-processRead :: TQueue ByteString -> Tag -> ByteString -> Context -> IO Tag
+processRead :: TQueue ByteString -> Tag -> ByteString -> (Context u) -> IO Tag
 processRead q tag msg c =
   case traceShowId (runGet get msg) of
     Left e ->
@@ -134,20 +134,20 @@ processRead q tag msg c =
         Right m ->
           atomically (writeTQueue q (toNinePFormat m tag)) >> return tag
 
-processBlockedReads :: Context -> IO (ByteString, Context)
+processBlockedReads :: (Context u) -> IO (ByteString, (Context u))
 processBlockedReads c = do
   (tagDones, nc) <- checkBlockedReads c
   return ((BS.concat . fmap (uncurry toNinePFormat . swap)) tagDones, nc)
 
 -- TODO Not bothering with max string size.
 processIO
-  :: forall t a.
+  :: forall t a u.
      (ToNinePFormat a, Serialize t, Show a, Show t)
-  => (t -> Context -> IO (Either Rerror a, Context))
+  => (t -> (Context u) -> IO (Either Rerror a, (Context u)))
   -> Tag
   -> ByteString
-  -> Context
-  -> IO (ByteString, Context)
+  -> (Context u)
+  -> IO (ByteString, (Context u))
 processIO f tag msg c =
   case runGet get msg of
     Left e -> return (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
@@ -170,9 +170,9 @@ getMessageHeaders = do
 -- (asum ( [fmap Input readTQueue q ] ++ mapM ( fmap Wait . wait . bAsync ) (cBlockedReads context)))
 -- if the input is made to a TQueue too
 -- do not feel the need for the input to be a TQueue now.
--- eventLoop :: Handle -> TQueue ByteString -> TQueue ByteString -> Context -> IO () -- Context
+-- eventLoop :: Handle -> TQueue ByteString -> TQueue ByteString -> (Context u) -> IO () -- (Context u)
 -- eventLoop handle input output context = do
-eventLoop :: Handle -> TQueue ByteString -> Context -> IO () -- Context
+eventLoop :: Handle -> TQueue ByteString -> (Context u) -> IO () -- (Context u)
 eventLoop handle sendQ context = do
   rawSize <- BS.hGet handle 4
   case runGet getWord32le rawSize of
@@ -214,7 +214,7 @@ eventLoop handle sendQ context = do
               in atomically (writeTQueue sendQ response) >>
                  furtherProcessing handle sendQ updatedContext
 
-furtherProcessing :: Handle -> TQueue ByteString -> Context -> IO ()
+furtherProcessing :: Handle -> TQueue ByteString -> (Context u) -> IO ()
 furtherProcessing handle sendQ c = do
   (errorMessages, nc) <- processBlockedReads c
   atomically (writeTQueue sendQ errorMessages)

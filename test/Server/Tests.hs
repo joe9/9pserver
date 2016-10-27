@@ -66,10 +66,10 @@ tests socket = do
     , testCase "testWrite01" (testWrite01 socket)
     ]
 
-testContext :: Context
+testContext :: Context ()
 testContext = def {cFSItems = testFSItemsList}
 
-testFSItemsList :: V.Vector (FSItem Context)
+testFSItemsList :: V.Vector (FSItem (Context u))
 testFSItemsList =
   V.fromList
     [ directory "/" 0

@@ -55,10 +55,10 @@ tests =
     , testCase "testWrite01" testWrite01
     ]
 
-testContext :: Context
+testContext :: Context ()
 testContext = def {cFSItems = testFSItemsList}
 
-testFSItemsList :: V.Vector (FSItem Context)
+testFSItemsList :: V.Vector (FSItem (Context u))
 testFSItemsList =
   V.fromList
     [ directory "/" 0

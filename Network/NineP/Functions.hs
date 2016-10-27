@@ -29,10 +29,10 @@ import qualified Data.NineP.Stat as Stat
 import Network.NineP.Context
 import Network.NineP.Error
 
-sampleContext :: Context
+sampleContext :: Default u => (Context u)
 sampleContext = def {cFSItems = sampleFSItemsList}
 
-sampleFSItemsList :: V.Vector (FSItem Context)
+sampleFSItemsList :: V.Vector (FSItem (Context u))
 sampleFSItemsList =
   V.fromList
     [ sampleDir "/" 0
@@ -42,18 +42,18 @@ sampleFSItemsList =
     , sampleFile "/dir1/in" 4
     ]
 
-sampleDir, sampleFile :: RawFilePath -> FSItemsIndex -> FSItem Context
+sampleDir, sampleFile :: RawFilePath -> FSItemsIndex -> FSItem (Context u)
 sampleDir name index = FSItem Occupied (dirDetails name index) []
 
 sampleFile name index = FSItem Occupied (sampleFileDetails name index) []
 
-resetContext :: Context -> Context
+resetContext :: (Context u) -> (Context u)
 resetContext c = c {cFids = HashMap.empty}
 
 -- TODO need some validation to ensure that the parent directory exists
 -- name is an absolute path
 -- use readOnlyFileDetails or writeOnlyFileDetails instead of this
-sampleFileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details Context
+sampleFileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details (Context u)
 sampleFileDetails name index =
   Details
   { dOpen = fileOpen
@@ -92,9 +92,9 @@ dirDetails name index =
 
 dirRemove :: Fid
           -> FidState
-          -> FSItem Context
-          -> Context
-          -> (Maybe NineError, Context)
+          -> FSItem (Context u)
+          -> (Context u)
+          -> (Maybe NineError, (Context u))
 dirRemove _ _ _ c = (Just (OtherError "Not implemented"), c)
 
 dirWrite
@@ -102,12 +102,12 @@ dirWrite
   -> Offset
   -> ByteString
   -> FidState
-  -> FSItem Context
-  -> Context
-  -> IO (Either NineError Count, Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> IO (Either NineError Count, (Context u))
 dirWrite _ _ _ _ _ c = return (Left (OtherError "Not implemented"), c)
 
-fdFlush :: FSItem Context -> Context -> Context
+fdFlush :: FSItem (Context u) -> (Context u) -> (Context u)
 fdFlush _ c = c
 
 fsItemName :: RawFilePath -> RawFilePath
@@ -129,7 +129,7 @@ fsItemAbsoluteName name
 
 -- NineError message
 -- TODO change all the undefineds to return the old context and a
-noneDetails :: Details Context
+noneDetails :: Details (Context u)
 noneDetails =
   Details
   { dOpen = undefined
@@ -148,7 +148,7 @@ noneDetails =
   , dAbsoluteName = ""
   }
 
-none :: FSItem Context
+none :: FSItem (Context u)
 none = FSItem Vacant noneDetails []
 
 -- fileOpen :: Fid -> OpenMode -> s -> (Either NineError Qid, s)
@@ -160,7 +160,7 @@ none = FSItem Vacant noneDetails []
 -- fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
 -- fileWrite fid offset bs (FidState _ i c)
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-fdClunk :: Fid -> FSItem Context -> Context -> (Maybe NineError, Context)
+fdClunk :: Fid -> FSItem (Context u) -> (Context u) -> (Maybe NineError, (Context u))
 fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
 -- fileFlush :: s -> s
@@ -171,9 +171,9 @@ dirAttach
   -> UserName
   -> AccessName
   -> FSItemsIndex
-  -> FSItem Context
-  -> Context
-  -> (Either NineError Qid, Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Either NineError Qid, (Context u))
 dirAttach fid _ _ _ i d c =
   ( Right ((stQid . dStat . fDetails) d)
   , c {cFids = HashMap.insert fid (FidState Nothing i) (cFids c)})
@@ -184,9 +184,9 @@ fileAttach
   -> UserName
   -> AccessName
   -> FSItemsIndex
-  -> FSItem Context
-  -> Context
-  -> (Either NineError Qid, Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Either NineError Qid, (Context u))
 fileAttach _ _ _ _ _ _ c =
   (Left (OtherError "fileAttach: file cannot be attached"), c)
 
@@ -195,9 +195,9 @@ fdCreate
   -> ByteString
   -> Permissions
   -> OpenMode
-  -> FSItem Context
-  -> Context
-  -> (Either NineError (Qid, IOUnit), Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Either NineError (Qid, IOUnit), (Context u))
 fdCreate _ _ _ _ _ context = (Left (ENotImplemented "fileCreate"), context)
 
 -- TODO check for permissions, etc
@@ -207,9 +207,9 @@ fileOpen
   :: Fid
   -> OpenMode
   -> FidState
-  -> FSItem Context
-  -> Context
-  -> IO (Either NineError (Qid, IOUnit), Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> IO (Either NineError (Qid, IOUnit), (Context u))
 fileOpen fid mode fidState me c
   | mode == Read && isJust (fidQueue fidState) -- OREAD and Q already exists
    = return (Right ((stQid . dStat . fDetails) me, iounit), c)
@@ -233,9 +233,9 @@ dirOpen
   :: Fid
   -> OpenMode
   -> FidState
-  -> FSItem Context
-  -> Context
-  -> IO (Either NineError (Qid, IOUnit), Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> IO (Either NineError (Qid, IOUnit), (Context u))
 dirOpen fid _ fidState me c =
   let iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
   in return
@@ -263,8 +263,8 @@ fileRead
   -> Offset
   -> Count
   -> FidState
-  -> FSItem Context
-  -> Context
+  -> FSItem (Context u)
+  -> (Context u)
   -> IO (Either NineError ByteString)
 fileRead _ _ _ (FidState Nothing _) _ _ =
   return ((Left . OtherError) "No Queue to read from")
@@ -277,8 +277,8 @@ dirRead
   -> Offset
   -> Count
   -> FidState
-  -> FSItem Context
-  -> Context
+  -> FSItem (Context u)
+  -> (Context u)
   -> IO (Either NineError ByteString)
 dirRead _ _ _ _ fsItem c =
   let fsItems = cFSItems c
@@ -291,7 +291,7 @@ dirRead _ _ _ _ fsItem c =
       childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
   in (return . Right . BS.concat . V.toList) childrenStatsBS
 
-belongsToDir :: RawFilePath -> FSItem Context -> Bool
+belongsToDir :: RawFilePath -> FSItem (Context u) -> Bool
 belongsToDir fp fsItem
                 -- is the same item
   | fp == (dAbsoluteName . fDetails) fsItem = False
@@ -300,9 +300,9 @@ belongsToDir fp fsItem
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
 fileRemove :: Fid
            -> FidState
-           -> FSItem Context
-           -> Context
-           -> (Maybe NineError, Context)
+           -> FSItem (Context u)
+           -> (Context u)
+           -> (Maybe NineError, (Context u))
 fileRemove fid fidState _ c =
   let index = fidFSItemsIndex fidState
   in ( Nothing
@@ -320,9 +320,9 @@ writeStat
   :: Fid
   -> Stat
   -> FidState
-  -> FSItem Context
-  -> Context
-  -> (Maybe NineError, Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Maybe NineError, (Context u))
 writeStat _ stat fidState me c =
   let oldstat = (dStat . fDetails) me
       updatedStat =
@@ -518,7 +518,7 @@ normalizePath = joinPath . splitDirectories
 --             (stModeToQType fsitem)
 --             ((dVersion . fDetails) fsitem)
 --             (fromIntegral fsItemIndex)))
-hasName :: RawFilePath -> FSItem Context -> Bool
+hasName :: RawFilePath -> FSItem (Context u) -> Bool
 hasName name fsitem =
   let normalizedName = normalizePath name
   in normalizedName == (normalizePath . dAbsoluteName . fDetails) fsitem
@@ -528,8 +528,8 @@ fileWalk
   -> RawFilePath
   -> [Qid] -- parent qids
   -> [RawFilePath] -- still to traverse
-  -> Context
-  -> (Either NineError [Qid], Context)
+  -> (Context u)
+  -> (Either NineError [Qid], (Context u))
 fileWalk newfid name parentQids [] c =
   case findIndexUsingName name (cFSItems c) of
     Nothing -> (Right parentQids, c)
@@ -541,7 +541,7 @@ fileWalk newfid name parentQids [] c =
         })
 fileWalk _ _ parentQids _ c = (Right parentQids, c)
 
-findIndexUsingName :: RawFilePath -> Vector (FSItem Context) -> Maybe Int
+findIndexUsingName :: RawFilePath -> Vector (FSItem (Context u)) -> Maybe Int
 findIndexUsingName name = V.findIndex (hasName name)
 
 dirWalk
@@ -549,8 +549,8 @@ dirWalk
   -> RawFilePath
   -> [Qid] -- parent qids
   -> [RawFilePath] -- still to traverse
-  -> Context
-  -> (Either NineError [Qid], Context)
+  -> (Context u)
+  -> (Either NineError [Qid], (Context u))
 dirWalk newfid name parentQids [] c =
   case findIndexUsingName name (cFSItems c) of
     Nothing -> (Right parentQids, c)

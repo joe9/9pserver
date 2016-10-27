@@ -19,10 +19,10 @@ import Network.NineP.Context
 import Network.NineP.Error
 import Network.NineP.Functions
 
-writeOnlyFile :: RawFilePath -> FSItemsIndex -> FSItem Context
+writeOnlyFile :: RawFilePath -> FSItemsIndex -> FSItem (Context u)
 writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) []
 
-writeOnlyFileDetails :: RawFilePath -> FSItemsIndex -> Details Context
+writeOnlyFileDetails :: RawFilePath -> FSItemsIndex -> Details (Context u)
 writeOnlyFileDetails name index =
   Details
   { dOpen = writeOnlyFileOpen
@@ -71,9 +71,9 @@ writeOnlyFileOpen
   :: Fid
   -> OpenMode
   -> FidState
-  -> FSItem Context
-  -> Context
-  -> IO (Either NineError (Qid, IOUnit), Context)
+  -> FSItem (Context u)
+  -> (Context u)
+  -> IO (Either NineError (Qid, IOUnit), (Context u))
 writeOnlyFileOpen fid mode fidState me c
   | mode == Write = fileOpen fid mode fidState me c
   | otherwise = return (Left (OtherError "Write Only File"), c)
@@ -90,9 +90,9 @@ writeOnlyFileRead _ _ _ _ _ _ = return (Left (OtherError "Write Only File"))
 
 writeOnlyFileRemove :: Fid
                     -> FidState
-                    -> FSItem Context
-                    -> Context
-                    -> (Maybe NineError, Context)
+                    -> FSItem (Context u)
+                    -> (Context u)
+                    -> (Maybe NineError, (Context u))
 writeOnlyFileRemove _ _ _ c = (Just (OtherError "Write Only File"), c)
 
 -- when a file is opened OREAD, then it creates a channel
@@ -106,8 +106,8 @@ sampleWriteToOutReadOpenFids
   -> ByteString
   -> FidState
   -> FSItem s
-  -> Context
-  -> IO (Either NineError Count, Context)
+  -> (Context u)
+  -> IO (Either NineError Count, (Context u))
 sampleWriteToOutReadOpenFids fid offset bs fidState me c = do
   let fids = cFids c
   case findIndexUsingName "/out" (cFSItems c) of
