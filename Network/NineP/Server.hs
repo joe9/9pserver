@@ -123,7 +123,7 @@ scheduleRead q tag msg c = do
 -- TODO Not bothering with max string size.
 processRead :: TQueue ByteString -> Tag -> ByteString -> (Context u) -> IO Tag
 processRead q tag msg c =
-  case traceShowId (runGet get msg) of
+  case runGet get msg of
     Left e ->
       atomically (writeTQueue q (toNinePFormat (traceShowId (Rerror (cs e))) tag)) >>
       return tag
