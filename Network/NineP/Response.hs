@@ -180,20 +180,18 @@ create (Tcreate fid name permissions mode) c =
 --             s <- mapM getStat $ contents
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
--- TODO split based on offset and count
 read :: Tread -> (Context u) -> IO (Either Rerror Rread)
-read (Tread fid offset@(0) count) c =
+read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"))
     Just fds ->
       case (cFSItems c) V.!? (fidFSItemsIndex fds) of
         Nothing -> return (rerror EInval)
         Just d -> do
-          result <- ((dRead . fDetails) d) fid 0 count fds d c
+          result <- ((dRead . fDetails) d) fid offset count fds d c
           case result of
             Left e  -> return (rerror e)
             Right v -> return ((Right . Rread) v)
-read _ _ = return ((Right . Rread) BS.empty)
 
 write :: Twrite -> (Context u) -> IO (Either Rerror Rwrite, (Context u))
 write (Twrite fid offset dat) c =

@@ -280,7 +280,7 @@ dirRead
   -> FSItem (Context u)
   -> (Context u)
   -> IO (Either NineError ByteString)
-dirRead _ _ _ _ fsItem c =
+dirRead _ 0 _ _ fsItem c =
   let fsItems = cFSItems c
       -- remove the trailing slash of the directory
       dirname = (dAbsoluteName . fDetails) fsItem
@@ -290,6 +290,7 @@ dirRead _ _ _ _ fsItem c =
           fsItems
       childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
   in (return . Right . BS.concat . V.toList) childrenStatsBS
+dirRead _ _ _ _ _ _ = return (Right BS.empty)
 
 belongsToDir :: RawFilePath -> FSItem (Context u) -> Bool
 belongsToDir fp fsItem
