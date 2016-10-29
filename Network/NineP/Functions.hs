@@ -272,6 +272,7 @@ fileRead _ _ _ (FidState (Just q) _) _ _ =
   (fmap Right . atomically . readTQueue) q
 
 -- TODO check for permissions, iounit details, etc
+-- TODO check offset and count
 dirRead
   :: Fid
   -> Offset
