@@ -176,7 +176,7 @@ dirAttach
   -> (Either NineError Qid, (Context u))
 dirAttach fid _ _ _ i d c =
   ( Right ((stQid . dStat . fDetails) d)
-  , c {cFids = HashMap.insert fid (FidState Nothing i) (cFids c)})
+  , c {cFids = HashMap.insert fid (FidState Nothing Nothing i) (cFids c)})
 
 fileAttach
   :: Fid
@@ -257,7 +257,6 @@ dirOpen fid _ fidState me c =
 --   atomically (writeTQueue q bs)
 --   return ((Right . fromIntegral . BS.length) bs, c)
 -- TODO check for permissions, iounit details, etc
--- TODO ignoring offset and count
 fileRead
   :: Fid
   -> Offset
@@ -265,11 +264,11 @@ fileRead
   -> FidState
   -> FSItem (Context u)
   -> (Context u)
-  -> IO (Either NineError ByteString)
-fileRead _ _ _ (FidState Nothing _) _ _ =
-  return ((Left . OtherError) "No Queue to read from")
-fileRead _ _ _ (FidState (Just q) _) _ _ =
-  (fmap Right . atomically . readTQueue) q
+  -> IO (ReadResponse, (Context u))
+fileRead _ _ _ (FidState Nothing _ _) _ c =
+  return ((ReadError . showNineError . OtherError) "No Queue to read from", c)
+fileRead _ _ count (FidState (Just q) _ _) _ c =
+  return (ReadQ q count, c)
 
 -- TODO check for permissions, iounit details, etc
 dirRead
@@ -279,8 +278,8 @@ dirRead
   -> FidState
   -> FSItem (Context u)
   -> (Context u)
-  -> IO (Either NineError ByteString)
-dirRead _ _ _ _ fsItem c =
+  -> IO (ReadResponse, (Context u))
+dirRead fid 0 count fidState fsItem c =
   let fsItems = cFSItems c
       -- remove the trailing slash of the directory
       dirname = (dAbsoluteName . fDetails) fsItem
@@ -289,7 +288,18 @@ dirRead _ _ _ _ fsItem c =
          V.filter (belongsToDir (traceShowId dirname)))
           fsItems
       childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
-  in (return . Right . BS.concat . V.toList) childrenStatsBS
+      toSendBS = (BS.concat . V.toList) childrenStatsBS
+   in return (ReadResponse (BS.take (fromIntegral count) toSendBS)
+               , c
+                 { cFids =
+                     HashMap.insert
+                       fid
+                       ( fidState {fidResponse = Just toSendBS})
+                       (cFids c)
+                 })
+dirRead _ offset count fidState _ c =
+   let responseBS = maybe BS.empty (BS.take (fromIntegral count) . BS.drop (fromIntegral offset))  ( fidResponse fidState)
+   in return (ReadResponse responseBS, c)
 
 belongsToDir :: RawFilePath -> FSItem (Context u) -> Bool
 belongsToDir fp fsItem
@@ -537,7 +547,7 @@ fileWalk newfid name parentQids [] c =
       ( Right parentQids
       , c
         { cFids =
-            HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
+            HashMap.insert newfid (FidState Nothing Nothing fsItemsIndex) (cFids c)
         })
 fileWalk _ _ parentQids _ c = (Right parentQids, c)
 
@@ -558,7 +568,7 @@ dirWalk newfid name parentQids [] c =
       ( Right parentQids
       , c
         { cFids =
-            HashMap.insert newfid (FidState Nothing fsItemsIndex) (cFids c)
+            HashMap.insert newfid (FidState Nothing Nothing fsItemsIndex) (cFids c)
         })
 dirWalk newfid name parentQids (f:fs) c =
   case findIndexUsingName (combine name f) (cFSItems c) of

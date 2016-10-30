@@ -113,31 +113,38 @@ process f tag msg c =
            (Left e, cn)  -> (toNinePFormat e tag, cn)
            (Right m, cn) -> (toNinePFormat m tag, cn)
 
--- TODO Not bothering with max string size.
--- TODO split based on offset and count
-scheduleRead :: TQueue ByteString -> Tag -> ByteString -> (Context u) -> IO (Context u)
-scheduleRead q tag msg c = do
-  asyncValue <- async (processRead q tag msg c)
-  return (c {cBlockedReads = (BlockedRead tag asyncValue) : cBlockedReads c})
-
--- TODO Not bothering with max string size.
-processRead :: TQueue ByteString -> Tag -> ByteString -> (Context u) -> IO Tag
-processRead q tag msg c =
-  case runGet get msg of
-    Left e ->
-      atomically (writeTQueue q (toNinePFormat (traceShowId (Rerror (cs e))) tag)) >>
-      return tag
-    Right d -> do
-      eitherResult <- read (traceShowId d) c
-      case traceShowId eitherResult of
-        Left e -> atomically (writeTQueue q (toNinePFormat e tag)) >> return tag
-        Right m ->
-          atomically (writeTQueue q (toNinePFormat m tag)) >> return tag
-
 processBlockedReads :: (Context u) -> IO (ByteString, (Context u))
 processBlockedReads c = do
   (tagDones, nc) <- checkBlockedReads c
   return ((BS.concat . fmap (uncurry toNinePFormat . swap)) tagDones, nc)
+
+processRead :: TQueue ByteString -> Tag -> ByteString -> (Context u)
+  -> IO (Context u)
+processRead writeq tag msg c =
+  case runGet get msg of
+    Left e ->
+      (atomically . writeTQueue writeq . flip toNinePFormat tag . traceShowId . Rerror . cs) e
+             >> return c
+    Right d -> do
+      (readResponse, nc) <- read (traceShowId d) c
+      case traceShowId readResponse of
+        ReadError e ->
+          atomically (writeTQueue writeq (toNinePFormat (Rerror e) tag)) >> return nc
+        ReadResponse m ->
+          atomically (writeTQueue writeq (toNinePFormat (Rread m) tag)) >> return nc
+        ReadQ readq count -> do
+          asyncValue <- async (readFromQ readq count tag writeq)
+          return (nc {cBlockedReads = (BlockedRead tag count asyncValue) : (cBlockedReads nc)})
+
+readFromQ :: TQueue ByteString -> Count -> Tag -> TQueue ByteString -> IO Tag
+readFromQ readq count tag writeq = do
+  atomically (do
+             contents <- readTQueue readq
+             let (sendContents, forNextTime) = BS.splitAt (fromIntegral count) contents
+             unGetTQueue readq forNextTime
+             writeTQueue writeq (toNinePFormat (Rread sendContents) tag)
+             return tag
+             )
 
 -- TODO Not bothering with max string size.
 processIO
@@ -192,7 +199,7 @@ eventLoop handle sendQ context = do
                 (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
               furtherProcessing handle sendQ context
             Right ((MT.Tread, tag), msgData) -> do
-              updatedContext <- scheduleRead sendQ tag msgData context
+              updatedContext <- processRead sendQ tag msgData context
               furtherProcessing handle sendQ updatedContext
             Right ((MT.Twrite, tag), msgData) -> do
               (response, updatedContext) <- processIO write tag msgData context

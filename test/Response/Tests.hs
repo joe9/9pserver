@@ -13,6 +13,7 @@ import qualified Data.Vector         as V
 import           Protolude           hiding (get, put)
 import           Test.Tasty
 import           Test.Tasty.HUnit
+import           Control.Concurrent.STM.TQueue
 
 import           Data.NineP
 import           Data.NineP.Qid  hiding (Directory)
@@ -196,10 +197,10 @@ testClunk02 = do
   openresult <- open (Topen 1 Write) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing 0), (1, FidState Nothing 1)]
+    [(0, FidState Nothing Nothing 0), (1, FidState Nothing Nothing 1)]
   let result = clunk (Tclunk 1) (snd openresult)
   fst result @?= Right Rclunk
-  (HashMap.toList . cFids . snd) result @?= [(0, FidState Nothing 0)]
+  (HashMap.toList . cFids . snd) result @?= [(0, FidState Nothing Nothing 0)]
 
 testReadDirectoryDir1 :: Assertion
 testReadDirectoryDir1 = do
@@ -209,12 +210,11 @@ testReadDirectoryDir1 = do
   openresult <- open (Topen 1 Read) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 3) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing 0), (1, FidState Nothing 3)]
+    [(0, FidState Nothing Nothing 0), (1, FidState Nothing Nothing 3)]
   result <- read (Tread 1 0 8168) (snd openresult)
   let statBS = runPut . put . dStat . fDetails
-  result @?=
-    Right
-      ((Rread . BS.concat . fmap statBS)
+  fst result @?=
+      ((ReadResponse . BS.concat . fmap statBS)
          [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
 
 --       walkresult = walk (Twalk 0 1 []) (snd statresult)
@@ -227,13 +227,12 @@ testReadDirectoryRoot = do
   openresult <- open (Topen 1 Read) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 0) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing 0), (1, FidState Nothing 0)]
+    [(0, FidState Nothing Nothing 0), (1, FidState Nothing Nothing 0)]
   result <- read (Tread 1 0 8168) (snd openresult)
   --   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems testContexts) V.! 4))
   let statBS = runPut . put . dStat . fDetails
-  result @?=
-    Right
-      ((Rread . BS.concat . fmap statBS)
+  fst result @?=
+      ((ReadResponse . BS.concat . fmap statBS)
          [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
 
 testStatWriteOnlyFile :: Assertion
@@ -304,6 +303,8 @@ testWrite01 = do
   fst inopenresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
   let writeContents = "testing write" :: BS.ByteString
   writeresult <- write (Twrite 2 0 writeContents) (snd inopenresult)
-  readresult <-
+  (ReadQ readQ count, _) <-
     read (Tread 1 0 (fromIntegral (BS.length writeContents))) (snd writeresult)
-  Rread writeContents @?= either (\_ -> Rread BS.empty) identity readresult
+  (fromIntegral (BS.length writeContents)) @?= count
+  contents <- atomically (readTQueue readQ)
+  writeContents @?= contents

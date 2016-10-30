@@ -85,8 +85,8 @@ writeOnlyFileRead
   -> FidState
   -> FSItem s
   -> s
-  -> IO (Either NineError ByteString)
-writeOnlyFileRead _ _ _ _ _ _ = return (Left (OtherError "Write Only File"))
+  -> IO (ReadResponse, s)
+writeOnlyFileRead _ _ _ _ _ c = return ((ReadError . showNineError . OtherError) "Write Only File", c)
 
 writeOnlyFileRemove :: Fid
                     -> FidState

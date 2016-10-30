@@ -119,15 +119,28 @@ type FSItemsIndex = Int
 
 data FidState = FidState
   { fidQueue        :: Maybe (TQueue ByteString)
+  , fidResponse     :: Maybe ByteString
   , fidFSItemsIndex :: FSItemsIndex
-  } deriving (Eq)
+  } deriving Eq
 
 instance Show FidState where
-  show = show . fidFSItemsIndex
+  show (FidState Nothing r i)= "FidState Nothing " ++ show r ++ " " ++ show i
+  show (FidState (Just _) r i)= "FidState <TQueue> " ++ show r ++ " " ++ show i
+
+data ReadResponse = ReadError ByteString
+  | ReadResponse ByteString
+  | ReadQ (TQueue ByteString) Count -- Offset Count (Async Tag)
+  deriving Eq
+
+instance Show ReadResponse where
+  show ( ReadError bs) = "ReadError " ++ show bs
+  show ( ReadResponse bs) = "ReadResponse " ++ show bs
+  show ( ReadQ _ count) = "ReadQ <TQueue> " ++ show count
 
 data BlockedRead = BlockedRead
-  { bTag   :: Tag
-  , bAsync :: Async Tag
+  { bTag    :: !Tag
+  , bCount  :: !Word32
+  , bAsync  :: Async Tag
   }
 
 data Context u = Context
@@ -147,7 +160,7 @@ data Details s = Details
   { dOpen :: Fid -> OpenMode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
     --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
   , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> s -> (Either NineError [Qid], s)
-  , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (Either NineError ByteString)
+  , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (ReadResponse, s)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
   , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
