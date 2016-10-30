@@ -78,21 +78,22 @@ writeOnlyFileOpen fid mode fidState me c
   | mode == Write = fileOpen fid mode fidState me c
   | otherwise = return (Left (OtherError "Write Only File"), c)
 
-writeOnlyFileRead
-  :: Fid
-  -> Offset
-  -> Count
-  -> FidState
-  -> FSItem s
-  -> s
-  -> IO (ReadResponse, s)
-writeOnlyFileRead _ _ _ _ _ c = return ((ReadError . showNineError . OtherError) "Write Only File", c)
+writeOnlyFileRead :: Fid
+                  -> Offset
+                  -> Count
+                  -> FidState
+                  -> FSItem s
+                  -> s
+                  -> IO (ReadResponse, s)
+writeOnlyFileRead _ _ _ _ _ c =
+  return ((ReadError . showNineError . OtherError) "Write Only File", c)
 
-writeOnlyFileRemove :: Fid
-                    -> FidState
-                    -> FSItem (Context u)
-                    -> (Context u)
-                    -> (Maybe NineError, (Context u))
+writeOnlyFileRemove
+  :: Fid
+  -> FidState
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Maybe NineError, (Context u))
 writeOnlyFileRemove _ _ _ c = (Just (OtherError "Write Only File"), c)
 
 -- when a file is opened OREAD, then it creates a channel

@@ -14,7 +14,7 @@ import           Control.Concurrent.STM.TQueue
 import           Control.Exception.Safe        hiding (handle)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
-import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Char8         as BSC
 import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
 import qualified GHC.Base                      as Base
@@ -23,7 +23,7 @@ import           Network.Simple.TCP
 import           Network.Socket                (socketToHandle)
 import           Protolude                     hiding (bracket, get,
                                                 handle, msg)
-import           System.IO                     (BufferMode (BlockBuffering, NoBuffering, LineBuffering),
+import           System.IO                     (BufferMode (BlockBuffering, LineBuffering, NoBuffering),
                                                 Handle,
                                                 IOMode (ReadWriteMode),
                                                 hClose, hFlush,
@@ -41,13 +41,14 @@ import Network.NineP.Response
 -- |Run the actual server using the supplied configuration.
 -- TODO move the below socket stuff to the Context
 run9PServer :: (Context u) -> HostPreference -> ServiceName -> IO ()
-run9PServer context hostPreference serviceName = do
-  --   hSetBuffering stdout NoBuffering
-  --   hSetBuffering stderr NoBuffering
+run9PServer context hostPreference serviceName
+                                   --   hSetBuffering stdout NoBuffering
+                                   --   hSetBuffering stderr NoBuffering
+ = do
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering
   serve hostPreference serviceName $ \(connectionSocket, remoteAddr) -> do
-    putStrLn ( "TCP connection established from " ++ show remoteAddr)
+    putStrLn ("TCP connection established from " ++ show remoteAddr)
     clientConnection connectionSocket (traceShowId remoteAddr) context
 
 -- Now you may use connectionSocket as you please within this scope,
@@ -79,11 +80,12 @@ clientConnection connectionSocket _ context =
 toErrorMessage :: ByteString -> ByteString -> ByteString
 toErrorMessage s bs = toNinePFormat (Rerror (BS.concat [s, ": ", bs])) 0
 
-processMessage :: MT.TransmitMessageType
-               -> Tag
-               -> ByteString
-               -> (Context u)
-               -> (ByteString, (Context u))
+processMessage
+  :: MT.TransmitMessageType
+  -> Tag
+  -> ByteString
+  -> (Context u)
+  -> (ByteString, (Context u))
 processMessage MT.Tversion = process version
 processMessage MT.Tattach  = process attach
 processMessage MT.Tclunk   = process clunk
@@ -118,33 +120,46 @@ processBlockedReads c = do
   (tagDones, nc) <- checkBlockedReads c
   return ((BS.concat . fmap (uncurry toNinePFormat . swap)) tagDones, nc)
 
-processRead :: TQueue ByteString -> Tag -> ByteString -> (Context u)
-  -> IO (Context u)
+processRead :: TQueue ByteString
+            -> Tag
+            -> ByteString
+            -> (Context u)
+            -> IO (Context u)
 processRead writeq tag msg c =
   case runGet get msg of
     Left e ->
-      (atomically . writeTQueue writeq . flip toNinePFormat tag . traceShowId . Rerror . cs) e
-             >> return c
+      (atomically .
+       writeTQueue writeq . flip toNinePFormat tag . traceShowId . Rerror . cs)
+        e >>
+      return c
     Right d -> do
       (readResponse, nc) <- read (traceShowId d) c
       case traceShowId readResponse of
         ReadError e ->
-          atomically (writeTQueue writeq (toNinePFormat (Rerror e) tag)) >> return nc
+          atomically (writeTQueue writeq (toNinePFormat (Rerror e) tag)) >>
+          return nc
         ReadResponse m ->
-          atomically (writeTQueue writeq (toNinePFormat (Rread m) tag)) >> return nc
+          atomically (writeTQueue writeq (toNinePFormat (Rread m) tag)) >>
+          return nc
         ReadQ readq count -> do
           asyncValue <- async (readFromQ readq count tag writeq)
-          return (nc {cBlockedReads = (BlockedRead tag count asyncValue) : (cBlockedReads nc)})
+          return
+            (nc
+             { cBlockedReads =
+                 (BlockedRead tag count asyncValue) : (cBlockedReads nc)
+             })
 
 readFromQ :: TQueue ByteString -> Count -> Tag -> TQueue ByteString -> IO Tag
 readFromQ readq count tag writeq = do
-  atomically (do
-             contents <- readTQueue readq
-             let (sendContents, forNextTime) = BS.splitAt (fromIntegral count) contents
-             unGetTQueue readq forNextTime
-             writeTQueue writeq (toNinePFormat (Rread sendContents) tag)
-             return tag
-             )
+  atomically
+    (do contents <- readTQueue readq
+        let (sendContents, forNextTime) =
+              BS.splitAt (fromIntegral count) contents
+        unGetTQueue readq forNextTime
+        writeTQueue
+          writeq
+          (toNinePFormat (traceShowId (Rread sendContents)) tag)
+        return tag)
 
 -- TODO Not bothering with max string size.
 processIO

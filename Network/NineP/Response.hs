@@ -185,11 +185,11 @@ read :: Tread -> (Context u) -> IO (ReadResponse, Context u)
 read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing ->
-      return ((ReadError . showNineError . ENoFile) "fid cannot be found",c)
+      return ((ReadError . showNineError . ENoFile) "fid cannot be found", c)
     Just fds ->
       case (cFSItems c) V.!? (fidFSItemsIndex fds) of
-        Nothing -> return ((ReadError . showNineError) EInval,c)
-        Just d -> ((dRead . fDetails) d) fid offset count fds d c
+        Nothing -> return ((ReadError . showNineError) EInval, c)
+        Just d  -> ((dRead . fDetails) d) fid offset count fds d c
 
 write :: Twrite -> (Context u) -> IO (Either Rerror Rwrite, (Context u))
 write (Twrite fid offset dat) c =

@@ -29,7 +29,9 @@ import qualified Data.NineP.Stat as Stat
 import Network.NineP.Context
 import Network.NineP.Error
 
-sampleContext :: Default u => (Context u)
+sampleContext
+  :: Default u
+  => (Context u)
 sampleContext = def {cFSItems = sampleFSItemsList}
 
 sampleFSItemsList :: V.Vector (FSItem (Context u))
@@ -53,7 +55,9 @@ resetContext c = c {cFids = HashMap.empty}
 -- TODO need some validation to ensure that the parent directory exists
 -- name is an absolute path
 -- use readOnlyFileDetails or writeOnlyFileDetails instead of this
-sampleFileDetails, dirDetails :: RawFilePath -> FSItemsIndex -> Details (Context u)
+sampleFileDetails, dirDetails :: RawFilePath
+                              -> FSItemsIndex
+                              -> Details (Context u)
 sampleFileDetails name index =
   Details
   { dOpen = fileOpen
@@ -90,11 +94,12 @@ dirDetails name index =
   , dAbsoluteName = fsItemAbsoluteName name
   }
 
-dirRemove :: Fid
-          -> FidState
-          -> FSItem (Context u)
-          -> (Context u)
-          -> (Maybe NineError, (Context u))
+dirRemove
+  :: Fid
+  -> FidState
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Maybe NineError, (Context u))
 dirRemove _ _ _ c = (Just (OtherError "Not implemented"), c)
 
 dirWrite
@@ -160,7 +165,10 @@ none = FSItem Vacant noneDetails []
 -- fileWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
 -- fileWrite fid offset bs (FidState _ i c)
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
-fdClunk :: Fid -> FSItem (Context u) -> (Context u) -> (Maybe NineError, (Context u))
+fdClunk :: Fid
+        -> FSItem (Context u)
+        -> (Context u)
+        -> (Maybe NineError, (Context u))
 fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
 -- fileFlush :: s -> s
@@ -267,8 +275,7 @@ fileRead
   -> IO (ReadResponse, (Context u))
 fileRead _ _ _ (FidState Nothing _ _) _ c =
   return ((ReadError . showNineError . OtherError) "No Queue to read from", c)
-fileRead _ _ count (FidState (Just q) _ _) _ c =
-  return (ReadQ q count, c)
+fileRead _ _ count (FidState (Just q) _ _) _ c = return (ReadQ q count, c)
 
 -- TODO check for permissions, iounit details, etc
 dirRead
@@ -289,17 +296,22 @@ dirRead fid 0 count fidState fsItem c =
           fsItems
       childrenStatsBS = V.map (runPut . put) (traceShowId childrenStats)
       toSendBS = (BS.concat . V.toList) childrenStatsBS
-   in return (ReadResponse (BS.take (fromIntegral count) toSendBS)
-               , c
-                 { cFids =
-                     HashMap.insert
-                       fid
-                       ( fidState {fidResponse = Just toSendBS})
-                       (cFids c)
-                 })
+  in return
+       ( ReadResponse (BS.take (fromIntegral count) toSendBS)
+       , c
+         { cFids =
+             HashMap.insert
+               fid
+               (fidState {fidResponse = Just toSendBS})
+               (cFids c)
+         })
 dirRead _ offset count fidState _ c =
-   let responseBS = maybe BS.empty (BS.take (fromIntegral count) . BS.drop (fromIntegral offset))  ( fidResponse fidState)
-   in return (ReadResponse responseBS, c)
+  let responseBS =
+        maybe
+          BS.empty
+          (BS.take (fromIntegral count) . BS.drop (fromIntegral offset))
+          (fidResponse fidState)
+  in return (ReadResponse responseBS, c)
 
 belongsToDir :: RawFilePath -> FSItem (Context u) -> Bool
 belongsToDir fp fsItem
@@ -308,11 +320,12 @@ belongsToDir fp fsItem
   | otherwise = fp == (takeDirectory . dAbsoluteName . fDetails) fsItem
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
-fileRemove :: Fid
-           -> FidState
-           -> FSItem (Context u)
-           -> (Context u)
-           -> (Maybe NineError, (Context u))
+fileRemove
+  :: Fid
+  -> FidState
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Maybe NineError, (Context u))
 fileRemove fid fidState _ c =
   let index = fidFSItemsIndex fidState
   in ( Nothing
@@ -361,7 +374,8 @@ writeStat _ stat fidState me c =
             if stLength stat == 0xffffffffffffffff -- don't touch value Word64
               then stLength oldstat
               else stLength stat
-        , stName = -- should not be changing this
+        , stName -- should not be changing this
+           =
             if BS.null (stName stat) -- don't touch value == ""
               then stName oldstat
               else stName stat
@@ -547,7 +561,10 @@ fileWalk newfid name parentQids [] c =
       ( Right parentQids
       , c
         { cFids =
-            HashMap.insert newfid (FidState Nothing Nothing fsItemsIndex) (cFids c)
+            HashMap.insert
+              newfid
+              (FidState Nothing Nothing fsItemsIndex)
+              (cFids c)
         })
 fileWalk _ _ parentQids _ c = (Right parentQids, c)
 
@@ -568,7 +585,10 @@ dirWalk newfid name parentQids [] c =
       ( Right parentQids
       , c
         { cFids =
-            HashMap.insert newfid (FidState Nothing Nothing fsItemsIndex) (cFids c)
+            HashMap.insert
+              newfid
+              (FidState Nothing Nothing fsItemsIndex)
+              (cFids c)
         })
 dirWalk newfid name parentQids (f:fs) c =
   case findIndexUsingName (combine name f) (cFSItems c) of
