@@ -64,6 +64,7 @@ tests socket = do
     , testCase "testReadDirectoryDir1" (testReadDirectoryDir1 socket)
     , testCase "testReadDirectoryRoot" (testReadDirectoryRoot socket)
     , testCase "testWrite01" (testWrite01 socket)
+    , testCase "testWrite02" (testWrite02 socket)
     ]
 
 testContext :: Context ()
@@ -341,6 +342,35 @@ testWrite01 socket = do
   receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContents)))
   sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContents)))
   receiveAndCheckMessage socket ( Rread writeContents)
+
+  sendMessage socket (Tclunk 1)
+  receiveAndCheckMessage socket Rclunk
+  sendMessage socket (Tclunk 2)
+  receiveAndCheckMessage socket Rclunk
+
+testWrite02 :: Socket -> Assertion
+testWrite02 socket = do
+  sendMessage socket (Twalk 0 1 ["out"])
+  receiveAndCheckMessage socket (Rwalk [Qid [] 0 2])
+  sendMessage socket (Topen 1 Read)
+  receiveAndCheckMessage socket (Ropen (Qid [] 0 2) 8977)
+
+  sendMessage socket (Twalk 0 2 ["in"])
+  receiveAndCheckMessage socket (Rwalk [Qid [AppendOnly] 0 1])
+  sendMessage socket (Topen 2 Write)
+  receiveAndCheckMessage socket (Ropen (Qid [AppendOnly] 0 1) 8977)
+
+  let writeContents = "testing write" :: BS.ByteString
+  sendMessage socket (Twrite 2 0 writeContents)
+  receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContents)))
+  sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContents)))
+  receiveAndCheckMessage socket (Rread writeContents)
+
+  let writeContentsAgain = "testing write again" :: BS.ByteString
+  sendMessage socket (Twrite 2 0 writeContentsAgain)
+  receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContentsAgain)))
+  sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContentsAgain)))
+  receiveAndCheckMessage socket (Rread writeContentsAgain)
 
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk

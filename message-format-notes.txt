@@ -143,3 +143,42 @@ got the below by using
  a4 28 12 58 stat.mtime = 1477585060
  00 00 00 00 00 00 00 00 stat.length = 0
  00 00 00 00 00 00 00 00 don't touch uid, gid or muid
+
+< 2016/10/30 05:51:28.325841  length=37 from=658 to=694
+ 25 00 00 00 75 01 00 1a 00 00 00 31 30 30 2c 31 30 30 2c 31 2c 33 31 2c 31 2c 39 39 2c 30 2c 39 39 2c 39 39 0a
+ 25 00 00 00 size = 37
+ 75 Rread
+ 01 00 tag = 1
+ 1a 00 00 00 data count = 26
+ 31 1
+ 30 0
+ 30 0
+ 2c ,
+ 31 1
+ 30 0
+ 30 0
+ 2c ,
+ 31 1
+ 2c ,
+ 33 3
+ 31 1
+ 2c ,
+ 31 1
+ 2c ,
+ 39 9
+ 39 9
+ 2c ,
+ 30 0
+ 2c ,
+ 39 9
+ 39 9
+ 2c ,
+ 39 9
+ 39 9
+ 0a LF -- NL line feed, new line
+
+ 0c 00 00 00 size = 12
+ 70 Topen
+ 02 00 tag = 2
+ 04 00 00 00 fid
+ 11 mode = truncate + write

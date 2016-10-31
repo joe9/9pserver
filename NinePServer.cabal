@@ -64,6 +64,7 @@ test-suite NinePServer-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   other-modules:       Response.Tests
+                       Server.Tests
   build-tools:       hsc2hs
   build-depends:       base
                      , bitmask
