@@ -14,6 +14,7 @@ import           Data.NineP.Qid
 import qualified Data.NineP.Qid  as Qid
 import           Data.NineP.Stat
 import qualified Data.NineP.Stat as Stat
+import Data.NineP.OpenMode
 
 import Network.NineP.Context
 import Network.NineP.Error

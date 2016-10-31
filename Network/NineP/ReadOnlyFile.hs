@@ -9,6 +9,7 @@ import           System.Posix.ByteString.FilePath
 import           Data.NineP
 import           Data.NineP.Qid
 import           Data.NineP.Stat
+import           Data.NineP.OpenMode
 
 import Network.NineP.Context
 import Network.NineP.Error
