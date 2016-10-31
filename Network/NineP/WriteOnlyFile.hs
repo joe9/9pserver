@@ -10,11 +10,11 @@ import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 
 import           Data.NineP
+import           Data.NineP.OpenMode
 import           Data.NineP.Qid
-import qualified Data.NineP.Qid  as Qid
+import qualified Data.NineP.Qid      as Qid
 import           Data.NineP.Stat
-import qualified Data.NineP.Stat as Stat
-import Data.NineP.OpenMode
+import qualified Data.NineP.Stat     as Stat
 
 import Network.NineP.Context
 import Network.NineP.Error

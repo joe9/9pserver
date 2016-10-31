@@ -19,12 +19,12 @@ import           System.Posix.FilePath
 import           Text.Groom
 
 import           Data.NineP
-import           Data.NineP.Qid
-import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat
-import qualified Data.NineP.Stat as Stat
 import           Data.NineP.OpenMode
 import qualified Data.NineP.OpenMode as OpenMode
+import           Data.NineP.Qid
+import qualified Data.NineP.Qid      as Qid
+import           Data.NineP.Stat
+import qualified Data.NineP.Stat     as Stat
 
 import Network.NineP.Error
 
@@ -123,26 +123,28 @@ data FidState = FidState
   { fidQueue        :: Maybe (TQueue ByteString)
   , fidResponse     :: Maybe ByteString
   , fidFSItemsIndex :: FSItemsIndex
-  } deriving Eq
+  } deriving (Eq)
 
 instance Show FidState where
-  show (FidState Nothing r i)= "FidState Nothing " ++ show r ++ " " ++ show i
-  show (FidState (Just _) r i)= "FidState <TQueue> " ++ show r ++ " " ++ show i
+  show (FidState Nothing r i) = "FidState Nothing " ++ show r ++ " " ++ show i
+  show (FidState (Just _) r i) = "FidState <TQueue> " ++ show r ++ " " ++ show i
 
-data ReadResponse = ReadError ByteString
+data ReadResponse
+  = ReadError ByteString
   | ReadResponse ByteString
-  | ReadQ (TQueue ByteString) Count -- Offset Count (Async Tag)
-  deriving Eq
+  | ReadQ (TQueue ByteString)
+          Count -- Offset Count (Async Tag)
+  deriving (Eq)
 
 instance Show ReadResponse where
-  show ( ReadError bs) = "ReadError " ++ show bs
-  show ( ReadResponse bs) = "ReadResponse " ++ show bs
-  show ( ReadQ _ count) = "ReadQ <TQueue> " ++ show count
+  show (ReadError bs)    = "ReadError " ++ show bs
+  show (ReadResponse bs) = "ReadResponse " ++ show bs
+  show (ReadQ _ count)   = "ReadQ <TQueue> " ++ show count
 
 data BlockedRead = BlockedRead
-  { bTag    :: !Tag
-  , bCount  :: !Word32
-  , bAsync  :: Async Tag
+  { bTag   :: !Tag
+  , bCount :: !Word32
+  , bAsync :: Async Tag
   }
 
 data Context u = Context
@@ -214,7 +216,8 @@ stModeToQType fsItem =
        mode
 
 -- TODO : Add to FileSystem
-instance Default u => Default (Context u) where
+instance Default u =>
+         Default (Context u) where
   def = Context HashMap.empty V.empty 8192 [] def
   --   def = Context HashMap.empty V.empty 512 []
 --   def = Context HashMap.empty sampleFSItemsList 8192 []

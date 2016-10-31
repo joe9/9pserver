@@ -3,13 +3,13 @@
 
 module Network.NineP.ReadOnlyFile where
 
-import           Protolude                        hiding (put)
-import           System.Posix.ByteString.FilePath
+import Protolude                        hiding (put)
+import System.Posix.ByteString.FilePath
 
-import           Data.NineP
-import           Data.NineP.Qid
-import           Data.NineP.Stat
-import           Data.NineP.OpenMode
+import Data.NineP
+import Data.NineP.OpenMode
+import Data.NineP.Qid
+import Data.NineP.Stat
 
 import Network.NineP.Context
 import Network.NineP.Error
@@ -18,9 +18,7 @@ import Network.NineP.Functions
 readOnlyFile :: RawFilePath -> FSItemsIndex -> FSItem (Context u)
 readOnlyFile name index = FSItem Occupied (readOnlyFileDetails name index) []
 
-readOnlyFileDetails :: RawFilePath
-                                -> FSItemsIndex
-                                -> Details (Context u)
+readOnlyFileDetails :: RawFilePath -> FSItemsIndex -> Details (Context u)
 readOnlyFileDetails name index =
   Details
   { dOpen = readOnlyFileOpen
@@ -80,9 +78,10 @@ readOnlyFileWrite
   -> IO (Either NineError Count, s)
 readOnlyFileWrite _ _ _ _ _ c = return (Left (OtherError "Read Only File"), c)
 
-readOnlyFileRemove :: Fid
-                   -> FidState
-                   -> FSItem (Context u)
-                   -> (Context u)
-                   -> (Maybe NineError, (Context u))
+readOnlyFileRemove
+  :: Fid
+  -> FidState
+  -> FSItem (Context u)
+  -> (Context u)
+  -> (Maybe NineError, (Context u))
 readOnlyFileRemove _ _ _ c = (Just (OtherError "Read Only File"), c)

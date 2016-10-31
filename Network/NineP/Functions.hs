@@ -21,12 +21,12 @@ import           System.Posix.FilePath
 import BitMask
 
 import           Data.NineP
-import           Data.NineP.Qid  hiding (Directory)
-import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat hiding (Directory)
-import qualified Data.NineP.Stat as Stat
 import           Data.NineP.OpenMode
 import qualified Data.NineP.OpenMode as OpenMode
+import           Data.NineP.Qid      hiding (Directory)
+import qualified Data.NineP.Qid      as Qid
+import           Data.NineP.Stat     hiding (Directory)
+import qualified Data.NineP.Stat     as Stat
 
 import Network.NineP.Context
 import Network.NineP.Error
