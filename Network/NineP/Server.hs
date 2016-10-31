@@ -155,7 +155,7 @@ readFromQ readq count tag writeq = do
     (do contents <- readTQueue readq
         let (sendContents, forNextTime) =
               BS.splitAt (fromIntegral count) contents
-        unGetTQueue readq forNextTime
+        when (not (BS.null forNextTime)) (unGetTQueue readq forNextTime)
         writeTQueue
           writeq
           (toNinePFormat (traceShowId (Rread sendContents)) tag)
