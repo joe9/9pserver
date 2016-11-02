@@ -5,21 +5,22 @@ module Response.Tests
   ( tests
   ) where
 
-import qualified Data.ByteString     as BS
+import           Control.Concurrent.STM.TQueue
+import qualified Data.ByteString               as BS
 import           Data.Default
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Strict           as HashMap
 import           Data.Serialize
-import qualified Data.Vector         as V
-import           Protolude           hiding (get, put)
+import qualified Data.Vector                   as V
+import           Protolude                     hiding (get, put)
 import           Test.Tasty
 import           Test.Tasty.HUnit
-import           Control.Concurrent.STM.TQueue
 
 import           Data.NineP
-import           Data.NineP.Qid  hiding (Directory)
-import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat hiding (AppendOnly, Directory)
-import qualified Data.NineP.Stat as Stat
+import           Data.NineP.OpenMode
+import           Data.NineP.Qid      hiding (Directory)
+import qualified Data.NineP.Qid      as Qid
+import           Data.NineP.Stat     hiding (AppendOnly, Directory)
+import qualified Data.NineP.Stat     as Stat
 
 --
 import Network.NineP
@@ -214,8 +215,8 @@ testReadDirectoryDir1 = do
   result <- read (Tread 1 0 8168) (snd openresult)
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
-      ((ReadResponse . BS.concat . fmap statBS)
-         [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
+    ((ReadResponse . BS.concat . fmap statBS)
+       [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
 
 --       walkresult = walk (Twalk 0 1 []) (snd statresult)
 --   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems testContexts) V.! 4))
@@ -232,8 +233,8 @@ testReadDirectoryRoot = do
   --   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems testContexts) V.! 4))
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
-      ((ReadResponse . BS.concat . fmap statBS)
-         [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
+    ((ReadResponse . BS.concat . fmap statBS)
+       [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
 
 testStatWriteOnlyFile :: Assertion
 testStatWriteOnlyFile =

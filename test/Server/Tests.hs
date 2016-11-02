@@ -13,19 +13,21 @@ import           Data.Default
 import qualified Data.HashMap.Strict as HashMap
 import           Data.Serialize
 import qualified Data.Vector         as V
+import           Network.Simple.TCP
 import           Protolude           hiding (get, put)
 import           Test.Tasty
 import           Test.Tasty.HUnit
-import           Network.Simple.TCP
 
 import BitMask
 
 import           Data.NineP
 import qualified Data.NineP.MessageTypes as MT
-import           Data.NineP.Qid  hiding (Directory)
-import qualified Data.NineP.Qid  as Qid
-import           Data.NineP.Stat hiding (AppendOnly, Directory)
-import qualified Data.NineP.Stat as Stat
+import           Data.NineP.OpenMode
+import           Data.NineP.Qid          hiding (Directory)
+import qualified Data.NineP.Qid          as Qid
+import           Data.NineP.Stat         hiding (AppendOnly,
+                                          Directory)
+import qualified Data.NineP.Stat         as Stat
 
 --
 import Network.NineP
@@ -45,7 +47,7 @@ tests socket = do
   testGroup
     "Server"
     [ testCase "testVersion01" (testVersion01 socket)
-    , testCase "testVersion02" ( testVersion02 socket)
+    , testCase "testVersion02" (testVersion02 socket)
     , testCase "testVersion03" (testVersion03 socket)
     , testCase "testVersion04" (testVersion04 socket)
     , testCase "testAttach01" (testAttach01 socket)
@@ -60,13 +62,13 @@ tests socket = do
     , testCase "testWalk05" (testWalk05 socket)
     , testCase "testOpenWrite" (testOpenWrite socket)
     , testCase "testOpenRead" (testOpenRead socket)
---     , testCase "testClunk02" (testClunk02 socket)
     , testCase "testReadDirectoryDir1" (testReadDirectoryDir1 socket)
     , testCase "testReadDirectoryRoot" (testReadDirectoryRoot socket)
     , testCase "testWrite01" (testWrite01 socket)
     , testCase "testWrite02" (testWrite02 socket)
     ]
 
+--     , testCase "testClunk02" (testClunk02 socket)
 testContext :: Context ()
 testContext = def {cFSItems = testFSItemsList}
 
@@ -81,10 +83,14 @@ testFSItemsList =
     , readOnlyFile "/dir1/out" 5
     ]
 
-sendMessageWithTag :: ToNinePFormat a => Socket -> Tag -> a -> IO ()
+sendMessageWithTag
+  :: ToNinePFormat a
+  => Socket -> Tag -> a -> IO ()
 sendMessageWithTag socket tag msg = send socket (toNinePFormat msg tag)
 
-sendMessage :: ToNinePFormat a => Socket -> a -> IO ()
+sendMessage
+  :: ToNinePFormat a
+  => Socket -> a -> IO ()
 sendMessage socket msg = send socket (toNinePFormat msg 1)
 
 getResponseMessageHeaders :: Get (Int, MT.ResponseMessageType, Tag)
@@ -94,22 +100,26 @@ getResponseMessageHeaders = do
   tag <- getWord16le
   return (fromIntegral size, MT.MkResponseMessageType msgType, tag)
 
-receiveAndCheckMessage :: (Serialize a, ToNinePFormat a, Eq a, Show a) => Socket -> a -> Assertion
+receiveAndCheckMessage
+  :: (Serialize a, ToNinePFormat a, Eq a, Show a)
+  => Socket -> a -> Assertion
 receiveAndCheckMessage socket msg = do
   maybeResult <- recv socket 8192
   case maybeResult of
-    Nothing -> assertFailure "receiveAndCheckMessage: Nothing received from the socket"
+    Nothing ->
+      assertFailure "receiveAndCheckMessage: Nothing received from the socket"
     Just result -> do
-      when (BS.length result > 7)
-           (case runGet get (BS.drop 7 result) of
-                Left s -> assertFailure s
-                Right message -> message @?= msg)
+      when
+        (BS.length result > 7)
+        (case runGet get (BS.drop 7 result) of
+           Left s        -> assertFailure s
+           Right message -> message @?= msg)
       let eitherResult = runGet getResponseMessageHeaders result
       case eitherResult of
         Left s -> assertFailure s
-        Right (size,msgType,tag) -> do
-            tag @?= 1
-            size @?= BS.length (toNinePFormat msg 1)
+        Right (size, msgType, tag) -> do
+          tag @?= 1
+          size @?= BS.length (toNinePFormat msg 1)
 
 testVersion01 :: Socket -> Assertion
 testVersion01 socket = do
@@ -139,34 +149,35 @@ testAttach01 socket = do
 testStat01 :: Socket -> Assertion
 testStat01 socket = do
   sendMessage socket (Tstat 0)
-  receiveAndCheckMessage socket
-       (Rstat
-        { rsStat =
-            Stat
-            { stTyp = 0
-            , stDev = 0
-            , stQid = Qid {qType = [Qid.Directory], qversion = 0, qPath = 0}
-            , stMode =
-                [ OtherExecutePermission
-                , OtherWritePermission
-                , OtherReadPermission
-                , GroupExecutePermission
-                , GroupWritePermission
-                , GroupReadPermission
-                , UserExecutePermission
-                , UserWritePermission
-                , UserReadPermission
-                , Stat.Directory
-                ]
-            , stAtime = 0
-            , stMtime = 0
-            , stLength = 0
-            , stName = "/"
-            , stUid = "root"
-            , stGid = "root"
-            , stMuid = "root"
-            }
-        })
+  receiveAndCheckMessage
+    socket
+    (Rstat
+     { rsStat =
+         Stat
+         { stTyp = 0
+         , stDev = 0
+         , stQid = Qid {qType = [Qid.Directory], qversion = 0, qPath = 0}
+         , stMode =
+             [ OtherExecutePermission
+             , OtherWritePermission
+             , OtherReadPermission
+             , GroupExecutePermission
+             , GroupWritePermission
+             , GroupReadPermission
+             , UserExecutePermission
+             , UserWritePermission
+             , UserReadPermission
+             , Stat.Directory
+             ]
+         , stAtime = 0
+         , stMtime = 0
+         , stLength = 0
+         , stName = "/"
+         , stUid = "root"
+         , stGid = "root"
+         , stMuid = "root"
+         }
+     })
 
 testWalk01 :: Socket -> Assertion
 testWalk01 socket = do
@@ -195,7 +206,9 @@ testWalk03 socket = do
 testWalk04 :: Socket -> Assertion
 testWalk04 socket = do
   sendMessage socket (Twalk 0 1 ["dir1", "in"])
-  receiveAndCheckMessage socket (Rwalk [Qid [Qid.Directory] 0 3, Qid [AppendOnly] 0 4])
+  receiveAndCheckMessage
+    socket
+    (Rwalk [Qid [Qid.Directory] 0 3, Qid [AppendOnly] 0 4])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -240,7 +253,6 @@ testOpenRead socket = do
 --   let result = clunk (Tclunk 1) (snd openresult)
 --   fst result @?= Right Rclunk
 --   (HashMap.toList . cFids . snd) result @?= [(0, FidState Nothing 0)]
-
 testReadDirectoryDir1 :: Socket -> Assertion
 testReadDirectoryDir1 socket = do
   sendMessage socket (Twalk 0 1 ["dir1"])
@@ -249,9 +261,10 @@ testReadDirectoryDir1 socket = do
   receiveAndCheckMessage socket (Ropen (Qid [Qid.Directory] 0 3) 8977)
   sendMessage socket (Tread 1 0 8168)
   let statBS = runPut . put . dStat . fDetails
-  receiveAndCheckMessage socket
-      ((Rread . BS.concat . fmap statBS)
-         [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
+  receiveAndCheckMessage
+    socket
+    ((Rread . BS.concat . fmap statBS)
+       [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -263,9 +276,10 @@ testReadDirectoryRoot socket = do
   receiveAndCheckMessage socket (Ropen (Qid [Qid.Directory] 0 0) 8977)
   sendMessage socket (Tread 1 0 8168)
   let statBS = runPut . put . dStat . fDetails
-  receiveAndCheckMessage socket
-      ((Rread . BS.concat . fmap statBS)
-         [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
+  receiveAndCheckMessage
+    socket
+    ((Rread . BS.concat . fmap statBS)
+       [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -274,28 +288,29 @@ testStatWriteOnlyFile socket = do
   sendMessage socket (Twalk 0 1 ["in"])
   receiveAndCheckMessage socket (Rwalk [Qid [AppendOnly] 0 1])
   sendMessage socket (Tstat 1)
-  receiveAndCheckMessage socket
-       (Rstat
-        { rsStat =
-           Stat
-            { stTyp = 0
-            , stDev = 0
-            , stQid = Qid {qType = [AppendOnly], qversion = 0, qPath = 1}
-            , stMode =
-                [ OtherWritePermission
-                , GroupWritePermission
-                , UserWritePermission
-                , Stat.AppendOnly
-                ]
-            , stAtime = 0
-            , stMtime = 0
-            , stLength = 0
-            , stName = "in"
-            , stUid = "root"
-            , stGid = "root"
-            , stMuid = "root"
-            }
-        })
+  receiveAndCheckMessage
+    socket
+    (Rstat
+     { rsStat =
+         Stat
+         { stTyp = 0
+         , stDev = 0
+         , stQid = Qid {qType = [AppendOnly], qversion = 0, qPath = 1}
+         , stMode =
+             [ OtherWritePermission
+             , GroupWritePermission
+             , UserWritePermission
+             , Stat.AppendOnly
+             ]
+         , stAtime = 0
+         , stMtime = 0
+         , stLength = 0
+         , stName = "in"
+         , stUid = "root"
+         , stGid = "root"
+         , stMuid = "root"
+         }
+     })
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -304,24 +319,25 @@ testStatReadOnlyFile socket = do
   sendMessage socket (Twalk 0 1 ["out"])
   receiveAndCheckMessage socket (Rwalk [Qid [] 0 2])
   sendMessage socket (Tstat 1)
-  receiveAndCheckMessage socket
-       (Rstat
-        { rsStat =
-           Stat
-            { stTyp = 0
-            , stDev = 0
-            , stQid = Qid {qType = [], qversion = 0, qPath = 2}
-            , stMode =
-                [OtherReadPermission, GroupReadPermission, UserReadPermission]
-            , stAtime = 0
-            , stMtime = 0
-            , stLength = 0
-            , stName = "out"
-            , stUid = "root"
-            , stGid = "root"
-            , stMuid = "root"
-            }
-        })
+  receiveAndCheckMessage
+    socket
+    (Rstat
+     { rsStat =
+         Stat
+         { stTyp = 0
+         , stDev = 0
+         , stQid = Qid {qType = [], qversion = 0, qPath = 2}
+         , stMode =
+             [OtherReadPermission, GroupReadPermission, UserReadPermission]
+         , stAtime = 0
+         , stMtime = 0
+         , stLength = 0
+         , stName = "out"
+         , stUid = "root"
+         , stGid = "root"
+         , stMuid = "root"
+         }
+     })
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -331,18 +347,17 @@ testWrite01 socket = do
   receiveAndCheckMessage socket (Rwalk [Qid [] 0 2])
   sendMessage socket (Topen 1 Read)
   receiveAndCheckMessage socket (Ropen (Qid [] 0 2) 8977)
-
   sendMessage socket (Twalk 0 2 ["in"])
   receiveAndCheckMessage socket (Rwalk [Qid [AppendOnly] 0 1])
   sendMessage socket (Topen 2 Write)
   receiveAndCheckMessage socket (Ropen (Qid [AppendOnly] 0 1) 8977)
-
   let writeContents = "testing write" :: BS.ByteString
   sendMessage socket (Twrite 2 0 writeContents)
-  receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContents)))
+  receiveAndCheckMessage
+    socket
+    (Rwrite (fromIntegral (BS.length writeContents)))
   sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContents)))
-  receiveAndCheckMessage socket ( Rread writeContents)
-
+  receiveAndCheckMessage socket (Rread writeContents)
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
   sendMessage socket (Tclunk 2)
@@ -354,24 +369,24 @@ testWrite02 socket = do
   receiveAndCheckMessage socket (Rwalk [Qid [] 0 2])
   sendMessage socket (Topen 1 Read)
   receiveAndCheckMessage socket (Ropen (Qid [] 0 2) 8977)
-
   sendMessage socket (Twalk 0 2 ["in"])
   receiveAndCheckMessage socket (Rwalk [Qid [AppendOnly] 0 1])
   sendMessage socket (Topen 2 Write)
   receiveAndCheckMessage socket (Ropen (Qid [AppendOnly] 0 1) 8977)
-
   let writeContents = "testing write" :: BS.ByteString
   sendMessage socket (Twrite 2 0 writeContents)
-  receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContents)))
+  receiveAndCheckMessage
+    socket
+    (Rwrite (fromIntegral (BS.length writeContents)))
   sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContents)))
   receiveAndCheckMessage socket (Rread writeContents)
-
   let writeContentsAgain = "testing write again" :: BS.ByteString
   sendMessage socket (Twrite 2 0 writeContentsAgain)
-  receiveAndCheckMessage socket (Rwrite (fromIntegral (BS.length writeContentsAgain)))
+  receiveAndCheckMessage
+    socket
+    (Rwrite (fromIntegral (BS.length writeContentsAgain)))
   sendMessage socket (Tread 1 0 (fromIntegral (BS.length writeContentsAgain)))
   receiveAndCheckMessage socket (Rread writeContentsAgain)
-
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
   sendMessage socket (Tclunk 2)
