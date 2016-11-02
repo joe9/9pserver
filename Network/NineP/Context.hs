@@ -8,6 +8,7 @@ import qualified Data.ByteString                  as BS
 import           Data.Default
 import qualified Data.HashMap.Strict              as HashMap
 import           Data.List
+import           Data.Tree
 import           Data.Serialize
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
@@ -111,7 +112,8 @@ data FSItem s = FSItem
 instance Show (FSItem s) where
   show f =
     unwords
-      [ (groom . fOccupied) f
+      [ (groom . dAbsoluteName . fDetails) f
+      , (groom . fOccupied) f
       , (groom . dVersion . fDetails) f
       , (groom . dStat . fDetails) f
       , groom (fOpenFids f)
@@ -151,6 +153,9 @@ data Context u = Context
   { cFids           :: HashMap.HashMap Fid FidState
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
+    -- TODO: Would have to change this to an IxSet to make it easier to
+    --        search using dAbsoluteName and also have an index to use
+    --        for Qid.Path
   , cFSItems        :: Vector (FSItem (Context u))
   , cMaxMessageSize :: Int
   , cBlockedReads   :: [BlockedRead]
@@ -221,3 +226,36 @@ instance Default u =>
   def = Context HashMap.empty V.empty 8192 [] def
   --   def = Context HashMap.empty V.empty 512 []
 --   def = Context HashMap.empty sampleFSItemsList 8192 []
+
+showFSItems :: Context u -> IO ()
+showFSItems = putStrLn . groom . V.toList . V.indexed . cFSItems
+
+-- *Main Protolude Data.Tree Text.Groom > putStrLn . groom . V.toList . V.indexed . treeTofsitemsvector $ sampleTree
+treeToFSItemsVector
+  :: Tree ((RawFilePath -> FSItemsIndex -> FSItem (Context u)), RawFilePath)
+  -> V.Vector (FSItem (Context u))
+treeToFSItemsVector tree =
+  (V.fromList .
+   zipWith (\(f, name) i -> f name i) (flatten (absolutePath "" tree)))
+    [0 ..]
+
+-- for testing absolutePath
+-- testtree :: Tree (ByteString, RawFilePath)
+-- testtree =
+--     Node ("directory", "/") [
+--       Node ("ctlFile", "ctl" ) []
+--     , Node ("inFile", "in" ) []
+--     , Node ("readOnlyFile", "out" ) []
+--     , Node ("readOnlyFile", "echo" ) []
+--     ]
+-- below version uses foldTree, call it using
+-- > foldTree (absolutePath "") testtree
+-- absolutePath :: RawFilePath -> (t,RawFilePath) -> [Tree (t,RawFilePath)] -> Tree (t,RawFilePath)
+-- absolutePath parent (f,name) xs =
+--   let builtName = combine parent name
+--   in Node (f,builtName) (fmap (foldTree (absolutePath builtName)) xs)
+-- this is easier to understand than the foldTree version
+absolutePath :: RawFilePath -> Tree (t, RawFilePath) -> Tree (t, RawFilePath)
+absolutePath parent (Node (f, name) xs) =
+  let builtName = combine parent name
+  in Node (f, builtName) (fmap (absolutePath builtName) xs)

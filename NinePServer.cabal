@@ -43,6 +43,7 @@ Library
               , groom
               , posix-paths
               , unix
+              , containers
   Exposed-modules:
                   Network.NineP
                   Network.NineP.Error

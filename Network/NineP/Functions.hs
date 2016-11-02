@@ -9,6 +9,7 @@ import           Data.Default
 import qualified Data.HashMap.Strict              as HashMap
 import           Data.List
 import           Data.Serialize
+import           Data.Tree
 import           Data.Vector                      (Vector)
 import qualified Data.Vector                      as V
 import qualified Data.Vector.Mutable              as DVM
@@ -37,13 +38,15 @@ sampleContext
 sampleContext = def {cFSItems = sampleFSItemsList}
 
 sampleFSItemsList :: V.Vector (FSItem (Context u))
-sampleFSItemsList =
-  V.fromList
-    [ sampleDir "/" 0
-    , sampleFile "/in" 1
-    , sampleFile "/out" 2
-    , sampleDir "/dir1" 3
-    , sampleFile "/dir1/in" 4
+sampleFSItemsList = treeToFSItemsVector sampleTree
+
+sampleTree :: Tree ((RawFilePath -> FSItemsIndex -> FSItem (Context u)), RawFilePath)
+sampleTree =
+  Node
+    (sampleDir, "/")
+    [ Node (sampleFile, "in") []
+    , Node (sampleFile, "out") []
+    , Node (sampleDir, "dir1") [Node (sampleFile, "in") []]
     ]
 
 sampleDir, sampleFile :: RawFilePath -> FSItemsIndex -> FSItem (Context u)
@@ -549,6 +552,13 @@ hasName name fsitem =
   let normalizedName = normalizePath name
   in normalizedName == (normalizePath . dAbsoluteName . fDetails) fsitem
 
+findIndexUsingName :: RawFilePath -> Vector (FSItem (Context u)) -> Maybe Int
+findIndexUsingName name = V.findIndex (hasName name)
+
+fastFindIndexUsingName :: RawFilePath -> Context u -> Maybe FSItemsIndex
+fastFindIndexUsingName fp =
+  V.findIndex ((==) fp . dAbsoluteName . fDetails) . cFSItems
+
 fileWalk
   :: NewFid
   -> RawFilePath
@@ -569,9 +579,6 @@ fileWalk newfid name parentQids [] c =
               (cFids c)
         })
 fileWalk _ _ parentQids _ c = (Right parentQids, c)
-
-findIndexUsingName :: RawFilePath -> Vector (FSItem (Context u)) -> Maybe Int
-findIndexUsingName name = V.findIndex (hasName name)
 
 dirWalk
   :: NewFid

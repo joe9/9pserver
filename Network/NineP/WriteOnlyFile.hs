@@ -131,3 +131,12 @@ writeToOpenChannelsOfFSItemAtIndex i bs =
 writeToMaybeQueue :: Maybe (TQueue ByteString) -> ByteString -> IO ()
 writeToMaybeQueue (Nothing) _ = return ()
 writeToMaybeQueue (Just q) bs = atomically (writeTQueue q bs)
+
+writeToOpenChannelsOf :: RawFilePath -> ByteString -> (Context u) -> IO ()
+writeToOpenChannelsOf fp bs c =
+  case fastFindIndexUsingName fp c of
+    Nothing -> return ()
+    (Just index)
+    -- write to all read channels of FSItem at index
+     -> do
+      writeToOpenChannelsOfFSItemAtIndex index bs (cFids c)
