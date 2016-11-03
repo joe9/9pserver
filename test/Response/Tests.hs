@@ -163,9 +163,9 @@ testWalk03 = do
   (fst attachresult) @?= (Right (Rattach (Qid [Qid.Directory] 0 0)))
   let statresult = stat (Tstat 0) (snd attachresult)
       result = walk (Twalk 0 1 ["dir1"]) (snd statresult)
---   (putStrLn . groom . cFSItems . snd) statresult
   fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3])
 
+--   (putStrLn . groom . cFSItems . snd) statresult
 testWalk04 :: Assertion
 testWalk04 =
   let attachresult = attach (Tattach 0 0xffffffff "root" "") testContext
@@ -226,9 +226,7 @@ testReadDirectoryDir1 = do
     , (1, FidState Nothing Nothing (FidId 1))
     ]
   (IxSet.toList . cFSItemFids . snd) openresult @?=
-    [ (FSItemFid (FSItemId 0) (FidId 0))
-    , (FSItemFid (FSItemId 3) (FidId 1))
-    ]
+    [(FSItemFid (FSItemId 0) (FidId 0)), (FSItemFid (FSItemId 3) (FidId 1))]
   result <- read (Tread 1 0 8168) (snd openresult)
   let statBS = runPut . put . dStat . fDetails
   fst result @?=

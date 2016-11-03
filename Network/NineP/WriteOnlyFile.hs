@@ -6,8 +6,8 @@ module Network.NineP.WriteOnlyFile where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import qualified Data.HashMap.Strict              as HashMap
-import qualified Data.IxSet.Typed              as IxSet
-import Data.IxSet.Typed
+import           Data.IxSet.Typed
+import qualified Data.IxSet.Typed                 as IxSet
 import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 
@@ -23,7 +23,8 @@ import Network.NineP.Error
 import Network.NineP.Functions
 
 writeOnlyFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) (mkAbsolutePath name) index
+writeOnlyFile name index =
+  FSItem Occupied (writeOnlyFileDetails name index) (mkAbsolutePath name) index
 
 writeOnlyFileDetails :: RawFilePath -> FSItemId -> Details (Context u)
 writeOnlyFileDetails name index =
@@ -90,11 +91,10 @@ writeOnlyFileRead :: Fid
 writeOnlyFileRead _ _ _ _ _ c =
   return ((ReadError . showNineError . OtherError) "Write Only File", c)
 
-writeOnlyFileRemove
-  :: Fid
-  -> FSItem (Context u)
-  -> (Context u)
-  -> (Maybe NineError, (Context u))
+writeOnlyFileRemove :: Fid
+                    -> FSItem (Context u)
+                    -> (Context u)
+                    -> (Maybe NineError, (Context u))
 writeOnlyFileRemove _ _ c = (Just (OtherError "Write Only File"), c)
 
 -- when a file is opened OREAD, then it creates a channel
@@ -123,8 +123,10 @@ writeToOpenChannelsOfFSItemAtIndex :: FSItemId
                                    -> Context u
                                    -> IO ()
 writeToOpenChannelsOfFSItemAtIndex i bs c =
-  (mapM_ (flip writeToMaybeQueue bs) . fmap (\(FidId fid) -> HashMap.lookup fid (cFids c) >>= fidQueue) . fmap ffFid . IxSet.toList) ((cFSItemFids c) @= i)
-
+  (mapM_ (flip writeToMaybeQueue bs) .
+   fmap (\(FidId fid) -> HashMap.lookup fid (cFids c) >>= fidQueue) .
+   fmap ffFid . IxSet.toList)
+    ((cFSItemFids c) @= i)
 
 writeToMaybeQueue :: Maybe (TQueue ByteString) -> ByteString -> IO ()
 writeToMaybeQueue (Nothing) _ = return ()

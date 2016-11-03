@@ -16,7 +16,8 @@ import Network.NineP.Error
 import Network.NineP.Functions
 
 readOnlyFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-readOnlyFile name index = FSItem Occupied (readOnlyFileDetails name index) (mkAbsolutePath name) index
+readOnlyFile name index =
+  FSItem Occupied (readOnlyFileDetails name index) (mkAbsolutePath name) index
 
 readOnlyFileDetails :: RawFilePath -> FSItemId -> Details (Context u)
 readOnlyFileDetails name index =
@@ -67,18 +68,16 @@ readOnlyFileOpen fid mode fidState me c
   | mode == Read = fileOpen fid mode fidState me c
   | otherwise = return (Left (OtherError "Read Only File"), c)
 
-readOnlyFileWrite
-  :: Fid
-  -> Offset
-  -> ByteString
-  -> FSItem s
-  -> s
-  -> IO (Either NineError Count, s)
+readOnlyFileWrite :: Fid
+                  -> Offset
+                  -> ByteString
+                  -> FSItem s
+                  -> s
+                  -> IO (Either NineError Count, s)
 readOnlyFileWrite _ _ _ _ c = return (Left (OtherError "Read Only File"), c)
 
-readOnlyFileRemove
-  :: Fid
-  -> FSItem (Context u)
-  -> (Context u)
-  -> (Maybe NineError, (Context u))
+readOnlyFileRemove :: Fid
+                   -> FSItem (Context u)
+                   -> (Context u)
+                   -> (Maybe NineError, (Context u))
 readOnlyFileRemove _ _ c = (Just (OtherError "Read Only File"), c)

@@ -5,11 +5,11 @@ module Network.NineP.Response where
 
 import qualified Data.ByteString                  as BS
 import qualified Data.HashMap.Strict              as HashMap
+import           Data.IxSet.Typed                 hiding (null)
+import qualified Data.IxSet.Typed                 as IxSet
 import           Data.Maybe
 import           Data.String.Conversions
 import qualified Data.Vector                      as V
-import qualified Data.IxSet.Typed                      as IxSet
-import Data.IxSet.Typed hiding (null)
 import           GHC.Show
 import           Protolude                        hiding (show)
 import           System.Posix.ByteString.FilePath
@@ -87,12 +87,12 @@ attach (Tattach fid afid uname aname) c =
   case getFSItemOfFid fid c of
     Nothing ->
       if aname == "/" || BS.null aname || fid == 0
-      then case IxSet.getOne ((cFSItems c) @= FSItemId 0) of
-            Just fsItem ->
-                runEitherFunction
-                        (((dAttach . fDetails) fsItem) fid afid uname aname fsItem c)
-                        Rattach
-            Nothing -> (rerror (OtherError "attach: fsItem 0 not found"), c)
+        then case IxSet.getOne ((cFSItems c) @= FSItemId 0) of
+               Just fsItem ->
+                 runEitherFunction
+                   (((dAttach . fDetails) fsItem) fid afid uname aname fsItem c)
+                   Rattach
+               Nothing -> (rerror (OtherError "attach: fsItem 0 not found"), c)
         else (rerror (OtherError "attach: invalid attach point"), c)
     Just _ -> (rerror (OtherError "attach: fid is already in use"), c)
 
@@ -128,8 +128,7 @@ remove :: Tremove -> (Context u) -> (Either Rerror Rremove, (Context u))
 remove (Tremove fid) c =
   case getFSItemOfFid fid c of
     Nothing -> (rerror (OtherError "create: invalid fid"), c)
-    Just d ->
-              runMaybeFunction (((dRemove . fDetails) d) fid d c) Rremove
+    Just d -> runMaybeFunction (((dRemove . fDetails) d) fid d c) Rremove
 
 -- ropen (Msg _ t (Topen fid mode)) = do
 --     f <- lookup fid
@@ -153,9 +152,9 @@ create (Tcreate fid name permissions mode) c =
   case getFSItemOfFid fid c of
     Nothing -> (rerror (OtherError "create: invalid fid"), c)
     Just fsItem ->
-              runEitherFunction
-                (((dCreate . fDetails) fsItem) fid name permissions mode fsItem c)
-                (\(a, b) -> Rcreate a b)
+      runEitherFunction
+        (((dCreate . fDetails) fsItem) fid name permissions mode fsItem c)
+        (\(a, b) -> Rcreate a b)
 
 -- rread :: (Monad m, EmbedIO m) => Msg -> Nine m [Msg]
 -- rread (Msg _ t (Tread fid offset count)) = do
@@ -193,8 +192,8 @@ write (Twrite fid offset dat) c =
   case getFSItemOfFid fid c of
     Nothing -> return (rerror (OtherError "write: invalid fid"), c)
     Just fsItem -> do
-          result <- ((dWrite . fDetails) fsItem) fid offset dat fsItem c
-          return (runEitherFunction result Rwrite)
+      result <- ((dWrite . fDetails) fsItem) fid offset dat fsItem c
+      return (runEitherFunction result Rwrite)
 
 checkBlockedReads :: (Context u) -> IO ([(Tag, Rerror)], (Context u))
 checkBlockedReads c = do
@@ -231,9 +230,9 @@ wstat (Twstat fid stat) c =
   case getFSItemOfFid fid c of
     Nothing -> (rerror (OtherError "wstat: invalid fid"), c)
     Just fsItem ->
-              runMaybeFunction
-                (((dWriteStat . fDetails) fsItem) fid stat fsItem c)
-                Rwstat
+      runMaybeFunction
+        (((dWriteStat . fDetails) fsItem) fid stat fsItem c)
+        Rwstat
 
 -- TODO ../
 walk :: Twalk -> (Context u) -> (Either Rerror Rwalk, (Context u))
@@ -247,29 +246,28 @@ walk (Twalk fid newfid nwnames) c
         if null (filterOutJustSlash nwnames)
           then ( Right (Rwalk [])
                , c
-                    { cFids =
-                        HashMap.insert
-                        newfid
-                        (FidState Nothing Nothing (FidId newfid))
-                        (cFids c)
-                    , cFSItemFids =
-                        IxSet.updateIx
-                            (FidId newfid)
-                            (FSItemFid (fsItemId fsItem) (FidId newfid))
-                            (cFSItemFids c)
-                    })
+                 { cFids =
+                     HashMap.insert
+                       newfid
+                       (FidState Nothing Nothing (FidId newfid))
+                       (cFids c)
+                 , cFSItemFids =
+                     IxSet.updateIx
+                       (FidId newfid)
+                       (FSItemFid (fsItemId fsItem) (FidId newfid))
+                       (cFSItemFids c)
+                 })
           else runEitherFunction
-                       (((dWalk . fDetails) fsItem)
-                          newfid
-                          (fAbsoluteName fsItem)
-                          []
-                          (filterOutJustSlash nwnames)
-                          c)
-                       Rwalk
+                 (((dWalk . fDetails) fsItem)
+                    newfid
+                    (fAbsoluteName fsItem)
+                    []
+                    (filterOutJustSlash nwnames)
+                    c)
+                 Rwalk
 
 filterOutJustSlash :: [RawFilePath] -> [RawFilePath]
 filterOutJustSlash = filter ((/=) "/")
-
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
 --     let fixDirBit = (case f of

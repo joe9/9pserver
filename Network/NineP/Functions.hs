@@ -6,8 +6,9 @@ module Network.NineP.Functions where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import           Data.Default
-import Data.IxSet.Typed as IxSet hiding (flatten)
 import qualified Data.HashMap.Strict              as HashMap
+import           Data.IxSet.Typed                 as IxSet hiding
+                                                            (flatten)
 import           Data.List
 import           Data.Serialize
 import           Data.Tree
@@ -37,7 +38,10 @@ sampleContext
   :: Default u
   => (Context u)
 sampleContext =
-  def {cFSItems = sampleFSItemsList, cFSItemIdCounter = IxSet.size sampleFSItemsList}
+  def
+  { cFSItems = sampleFSItemsList
+  , cFSItemIdCounter = IxSet.size sampleFSItemsList
+  }
 
 sampleFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 sampleFSItemsList = treeToFSItems sampleTree
@@ -52,9 +56,11 @@ sampleTree =
     ]
 
 sampleDir, sampleFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-sampleDir name index = FSItem Occupied (dirDetails name index) (mkAbsolutePath name) index
+sampleDir name index =
+  FSItem Occupied (dirDetails name index) (mkAbsolutePath name) index
 
-sampleFile name index = FSItem Occupied (sampleFileDetails name index) (mkAbsolutePath name) index
+sampleFile name index =
+  FSItem Occupied (sampleFileDetails name index) (mkAbsolutePath name) index
 
 resetContext :: (Context u) -> (Context u)
 resetContext c = c {cFids = HashMap.empty}
@@ -62,9 +68,7 @@ resetContext c = c {cFids = HashMap.empty}
 -- TODO need some validation to ensure that the parent directory exists
 -- name is an absolute path
 -- use readOnlyFileDetails or writeOnlyFileDetails instead of this
-sampleFileDetails, dirDetails :: RawFilePath
-                              -> FSItemId
-                              -> Details (Context u)
+sampleFileDetails, dirDetails :: RawFilePath -> FSItemId -> Details (Context u)
 sampleFileDetails name index =
   Details
   { dOpen = fileOpen
@@ -99,11 +103,10 @@ dirDetails name index =
   , dVersion = 0
   }
 
-dirRemove
-  :: Fid
-  -> FSItem (Context u)
-  -> (Context u)
-  -> (Maybe NineError, (Context u))
+dirRemove :: Fid
+          -> FSItem (Context u)
+          -> (Context u)
+          -> (Maybe NineError, (Context u))
 dirRemove _ _ c = (Just (OtherError "Not implemented"), c)
 
 dirWrite
@@ -139,7 +142,8 @@ noneDetails =
   }
 
 vacate :: FSItem (Context u) -> FSItem (Context u)
-vacate me = me {fOccupied = Vacant , fDetails = noneDetails, fAbsoluteName = mempty}
+vacate me =
+  me {fOccupied = Vacant, fDetails = noneDetails, fAbsoluteName = mempty}
 
 -- fileOpen :: Fid -> OpenMode -> s -> (Either NineError Qid, s)
 -- fileOpen _ _ context = (Left (ENotImplemented "fileOpen"), context)
@@ -168,17 +172,15 @@ dirAttach
   -> (Either NineError Qid, (Context u))
 dirAttach fid _ _ _ me c =
   ( Right ((stQid . dStat . fDetails) me)
-  , c { cFids =
-            HashMap.insert
-              fid
-              (FidState Nothing Nothing (FidId fid))
-              (cFids c)
-        , cFSItemFids =
-            IxSet.updateIx
-              (FidId fid)
-              (FSItemFid (fsItemId me) (FidId fid))
-              (cFSItemFids c)
-        })
+  , c
+    { cFids =
+        HashMap.insert fid (FidState Nothing Nothing (FidId fid)) (cFids c)
+    , cFSItemFids =
+        IxSet.updateIx
+          (FidId fid)
+          (FSItemFid (fsItemId me) (FidId fid))
+          (cFSItemFids c)
+    })
 
 fileAttach
   :: Fid
@@ -284,8 +286,7 @@ dirRead fid 0 count fidState fsItem c =
       -- remove the trailing slash of the directory
       dirname = fAbsoluteName fsItem
       childrenStats =
-        (fmap (dStat . fDetails) .
-         filter (belongsToDir dirname) . IxSet.toList)
+        (fmap (dStat . fDetails) . filter (belongsToDir dirname) . IxSet.toList)
           fsItems
       childrenStatsBS = fmap (runPut . put) childrenStats
       toSendBS = BS.concat childrenStatsBS
@@ -310,22 +311,25 @@ belongsToDir :: AbsolutePath -> FSItem (Context u) -> Bool
 belongsToDir fp fsItem
                 -- is the same item
   | fp == fAbsoluteName fsItem = False
-  | otherwise = fp == (AbsolutePath . takeDirectory . unAbsolutePath . fAbsoluteName) fsItem
+  | otherwise =
+    fp == (AbsolutePath . takeDirectory . unAbsolutePath . fAbsoluteName) fsItem
 
 -- TODO http://man2.aiju.de/5/remove -- What is the behaviour if the concerned fid is a directory? remove the directory? how about any files in that directory?  [20:34]
-fileRemove
-  :: Fid
-  -> FSItem (Context u)
-  -> (Context u)
-  -> (Maybe NineError, (Context u))
+fileRemove :: Fid
+           -> FSItem (Context u)
+           -> (Context u)
+           -> (Maybe NineError, (Context u))
 fileRemove fid me c =
-     ( Nothing
-     , c
-       { cFids = HashMap.delete fid (cFids c)
-       , cFSItemFids =
-          foldl' (flip IxSet.delete) (cFSItemFids c) ((cFSItemFids c) @= (fsItemId me))
-       , cFSItems = IxSet.delete me (cFSItems c)
-       })
+  ( Nothing
+  , c
+    { cFids = HashMap.delete fid (cFids c)
+    , cFSItemFids =
+        foldl'
+          (flip IxSet.delete)
+          (cFSItemFids c)
+          ((cFSItemFids c) @= (fsItemId me))
+    , cFSItems = IxSet.delete me (cFSItems c)
+    })
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
 readStat _ me context = ((Right . dStat . fDetails) me, context)
@@ -386,7 +390,8 @@ writeStat _ stat me c =
         }
       newFSItem = me {fDetails = (fDetails me) {dStat = updatedStat}}
       updatedContext =
-        c {cFSItems = IxSet.updateIx (fsItemId newFSItem) newFSItem (cFSItems c)}
+        c
+        {cFSItems = IxSet.updateIx (fsItemId newFSItem) newFSItem (cFSItems c)}
   in (Nothing, updatedContext)
 
 dirStat :: FSItemId -> Stat
@@ -417,7 +422,8 @@ dirStat (FSItemId index) =
   }
 
 fileStat :: FSItemId -> Stat
-fileStat (FSItemId index) = -- if it is not a directory, it is a file
+fileStat (FSItemId index) -- if it is not a directory, it is a file
+ =
   Stat
   { stTyp = 0
   , stDev = 0
@@ -590,11 +596,11 @@ dirWalk newfid path parentQids [] c =
 dirWalk newfid path parentQids (f:fs) c =
   let newPath = AbsolutePath (combine (unAbsolutePath path) f)
   in case getOne ((cFSItems c) @= newPath) of
-        Nothing -> (Right parentQids, c)
-        Just fsItem ->
-            ((dWalk . fDetails) fsItem)
-                newfid
-                newPath
-                (parentQids ++ [(stQid . dStat . fDetails) fsItem])
-                fs
-                c
+       Nothing -> (Right parentQids, c)
+       Just fsItem ->
+         ((dWalk . fDetails) fsItem)
+           newfid
+           newPath
+           (parentQids ++ [(stQid . dStat . fDetails) fsItem])
+           fs
+           c

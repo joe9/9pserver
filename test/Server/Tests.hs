@@ -20,9 +20,8 @@ import           Test.Tasty.HUnit
 
 import BitMask
 
+import           Data.IxSet.Typed        as IxSet
 import           Data.NineP
-import           Data.IxSet.Typed as IxSet
-import           Data.Tree
 import qualified Data.NineP.MessageTypes as MT
 import           Data.NineP.OpenMode
 import           Data.NineP.Qid          hiding (Directory)
@@ -30,6 +29,7 @@ import qualified Data.NineP.Qid          as Qid
 import           Data.NineP.Stat         hiding (AppendOnly,
                                           Directory)
 import qualified Data.NineP.Stat         as Stat
+import           Data.Tree
 
 --
 import Network.NineP
@@ -73,17 +73,20 @@ tests socket = do
 --     , testCase "testClunk02" (testClunk02 socket)
 testContext :: Context ()
 testContext =
-  def {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
+  def
+  {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
 testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
   treeToFSItems
     (Node
-        (directory, "/")
-        [ Node (writeOnlyFile, "in") []
-        , Node (readOnlyFile, "out") []
-        , Node (directory, "dir1") [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
-        ])
+       (directory, "/")
+       [ Node (writeOnlyFile, "in") []
+       , Node (readOnlyFile, "out") []
+       , Node
+           (directory, "dir1")
+           [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
+       ])
 
 --   V.fromList
 --     [ directory "/" 0
@@ -93,7 +96,6 @@ testFSItemsList =
 --     , writeOnlyFile "/dir1/in" 4
 --     , readOnlyFile "/dir1/out" 5
 --     ]
-
 sendMessageWithTag
   :: ToNinePFormat a
   => Socket -> Tag -> a -> IO ()
@@ -275,7 +277,9 @@ testReadDirectoryDir1 socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [writeOnlyFile "/dir1/in" (FSItemId 4), readOnlyFile "/dir1/out" (FSItemId 5)])
+       [ writeOnlyFile "/dir1/in" (FSItemId 4)
+       , readOnlyFile "/dir1/out" (FSItemId 5)
+       ])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -290,7 +294,10 @@ testReadDirectoryRoot socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [writeOnlyFile "/in" (FSItemId 1), readOnlyFile "/out" (FSItemId 2), directory "/dir1" (FSItemId 3)])
+       [ writeOnlyFile "/in" (FSItemId 1)
+       , readOnlyFile "/out" (FSItemId 2)
+       , directory "/dir1" (FSItemId 3)
+       ])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 

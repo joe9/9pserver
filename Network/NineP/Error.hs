@@ -1,33 +1,32 @@
-
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -- |
 -- Stability   :  Ultra-Violence
 -- Portability :  I'm too young to die
 -- The exceptions one would want to throw to be understood by the existing 9P clients.
-
 module Network.NineP.Error
-    ( NineError(..)
-    , showNineError
-    ) where
+  ( NineError(..)
+  , showNineError
+  ) where
 
-import Protolude hiding (concat)
 import Data.ByteString
 import Data.Serialize
+import Protolude       hiding (concat)
 
-data NineError =
-    ENotImplemented ByteString |
-    ENotADir |
-    EDir |
-    ENoFile ByteString |
-    ENoFid Word32 |
-    ENoAuthRequired |
-    EPermissionDenied |
-    EInval |
-    OtherError ByteString deriving (Typeable)
+data NineError
+  = ENotImplemented ByteString
+  | ENotADir
+  | EDir
+  | ENoFile ByteString
+  | ENoFid Word32
+  | ENoAuthRequired
+  | EPermissionDenied
+  | EInval
+  | OtherError ByteString
+  deriving (Typeable)
 
 -- instance Exception NineError
-
 -- TODO rename this to nineErrorToByteString or show b or some such
 -- |See also: @linux\/net\/9p\/error.c@
 showNineError :: NineError -> ByteString
@@ -35,8 +34,10 @@ showNineError (ENotImplemented s) = append s " is not implemented"
 showNineError ENotADir = "not a directory"
 showNineError EDir = "Is a directory"
 showNineError (ENoFile _) = "file not found"
-showNineError (ENoFid i) = concat [runPut (putWord32le i), " is not registered on the server"]
-showNineError ENoAuthRequired = "the server doesn't require any kind of authentication"
+showNineError (ENoFid i) =
+  concat [runPut (putWord32le i), " is not registered on the server"]
+showNineError ENoAuthRequired =
+  "the server doesn't require any kind of authentication"
 showNineError EPermissionDenied = "permission denied"
 showNineError EInval = "Invalid argument"
 showNineError (OtherError s) = s

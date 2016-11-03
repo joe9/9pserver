@@ -1,29 +1,32 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DataKinds, MultiParamTypeClasses, FlexibleInstances,
-  DeriveDataTypeable #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
 module Network.NineP.Context where
 
-import Control.Concurrent.STM.TQueue
-import Data.Default
-import qualified Data.ByteString as BS
-import qualified Data.HashMap.Strict as HashMap
-import Data.List
-import Data.IxSet.Typed as IxSet hiding (flatten)
-import Data.Tree
-import qualified GHC.Show as Show
-import Protolude hiding (put, Proxy)
-import System.Posix.ByteString.FilePath
-import System.Posix.FilePath
-import Text.Groom
+import           Control.Concurrent.STM.TQueue
+import qualified Data.ByteString                  as BS
+import           Data.Default
+import qualified Data.HashMap.Strict              as HashMap
+import           Data.IxSet.Typed                 as IxSet hiding
+                                                            (flatten)
+import           Data.List
+import           Data.Tree
+import qualified GHC.Show                         as Show
+import           Protolude                        hiding (Proxy, put)
+import           System.Posix.ByteString.FilePath
+import           System.Posix.FilePath
+import           Text.Groom
 
-import Data.NineP
-import Data.NineP.OpenMode
-import Data.NineP.Qid
-import qualified Data.NineP.Qid as Qid
-import Data.NineP.Stat
-import qualified Data.NineP.Stat as Stat
+import           Data.NineP
+import           Data.NineP.OpenMode
+import           Data.NineP.Qid
+import qualified Data.NineP.Qid      as Qid
+import           Data.NineP.Stat
+import qualified Data.NineP.Stat     as Stat
 
 import Network.NineP.Error
 
@@ -96,20 +99,24 @@ import Network.NineP.Error
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
 -- if an item is removed, switch the Used to False.
 -- this is to avoid vector indexes getting changed when a delete happens
-data Occupied = Occupied | Vacant
+data Occupied
+  = Occupied
+  | Vacant
   deriving (Eq, Show, Ord, Typeable)
 
 data FSItem s = FSItem
-  { fOccupied :: Occupied
-  , fDetails :: Details s
+  { fOccupied     :: Occupied
+  , fDetails      :: Details s
   , fAbsoluteName :: AbsolutePath
-  , fsItemId :: FSItemId -- primary key, used by Qid.Path
+  , fsItemId      :: FSItemId -- primary key, used by Qid.Path
   }
 
-newtype AbsolutePath = AbsolutePath {unAbsolutePath :: RawFilePath}
-  deriving (Eq, Show, Ord)
+newtype AbsolutePath = AbsolutePath
+  { unAbsolutePath :: RawFilePath
+  } deriving (Eq, Show, Ord)
 
-newtype FSItemId = FSItemId Int
+newtype FSItemId =
+  FSItemId Int
   deriving (Eq, Show, Ord)
 
 type FSItemIxs = '[FSItemId, AbsolutePath, Occupied]
@@ -127,18 +134,19 @@ instance Indexable FSItemIxs (FSItem s) where
 --   have Id of an Id (Fid is itself an Id). But, Fid as per the
 --   9P2000 spec is a Word32 and it gets confusing to have a different
 --   type for that.
-newtype FidId = FidId Fid
+newtype FidId =
+  FidId Fid
   deriving (Eq, Show, Ord)
 
 data FidState = FidState
-  { fidQueue :: Maybe (TQueue ByteString)
+  { fidQueue    :: Maybe (TQueue ByteString)
   , fidResponse :: Maybe ByteString
-  , fFidId :: FidId -- primary key
+  , fFidId      :: FidId -- primary key
   } deriving (Eq)
 
 data FSItemFid = FSItemFid
   { ffFSItemId :: FSItemId
-  , ffFid :: FidId
+  , ffFid      :: FidId
   } deriving (Eq, Show, Ord)
 
 type FSItemFidIxs = '[FSItemId, FidId]
@@ -149,24 +157,24 @@ instance Indexable FSItemFidIxs FSItemFid where
   indices = ixList (ixFun (\i -> [ffFSItemId i])) (ixFun (\i -> [ffFid i]))
 
 data Context u = Context
-  { cFids :: HashMap.HashMap Fid FidState
+  { cFids            :: HashMap.HashMap Fid FidState
     -- similar to an inode map,
     -- representing the filesystem tree, with the root being the 0 always
     -- TODO: Would have to change this to an IxSet to make it easier to
     --        search using dAbsoluteName and also have an index to use
     --        for Qid.Path
-  , cFSItems :: IxSet FSItemIxs (FSItem (Context u))
-  , cMaxMessageSize :: Int
-  , cBlockedReads :: [BlockedRead]
-  , cUserState :: u
-  , cFSItemFids :: IxSet FSItemFidIxs FSItemFid
+  , cFSItems         :: IxSet FSItemIxs (FSItem (Context u))
+  , cMaxMessageSize  :: Int
+  , cBlockedReads    :: [BlockedRead]
+  , cUserState       :: u
+  , cFSItemFids      :: IxSet FSItemFidIxs FSItemFid
   , cFSItemIdCounter :: Int
   }
 
 getFSItemOfFid :: Fid -> Context u -> Maybe (FSItem (Context u))
 getFSItemOfFid fid c =
-    IxSet.getOne ((cFSItemFids c) @= FidId fid) >>=
-            (\ff -> IxSet.getOne ((cFSItems c) @= ffFSItemId ff))
+  IxSet.getOne ((cFSItemFids c) @= FidId fid) >>=
+  (\ff -> IxSet.getOne ((cFSItems c) @= ffFSItemId ff))
 
 instance Show FidState where
   show (FidState Nothing r i) = "FidState Nothing " ++ show r ++ " " ++ show i
@@ -202,12 +210,12 @@ data ReadResponse
   deriving (Eq)
 
 instance Show ReadResponse where
-  show (ReadError bs) = "ReadError " ++ show bs
+  show (ReadError bs)    = "ReadError " ++ show bs
   show (ReadResponse bs) = "ReadResponse " ++ show bs
-  show (ReadQ _ count) = "ReadQ <TQueue> " ++ show count
+  show (ReadQ _ count)   = "ReadQ <TQueue> " ++ show count
 
 data BlockedRead = BlockedRead
-  { bTag :: !Tag
+  { bTag   :: !Tag
   , bCount :: !Word32
   , bAsync :: Async Tag
   }
@@ -285,7 +293,9 @@ treeToFSItems
   -> IxSet FSItemIxs (FSItem (Context u))
 treeToFSItems tree =
   (IxSet.fromList .
-   zipWith (\(f, name) i -> f name (FSItemId i)) (flatten (absolutePath "" tree)))
+   zipWith
+     (\(f, name) i -> f name (FSItemId i))
+     (flatten (absolutePath "" tree)))
     [0 ..]
 
 -- for testing absolutePath
