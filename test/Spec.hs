@@ -5,7 +5,7 @@ module Main where
 
 import Network.Simple.TCP
 import Protolude
-import Test.Tasty             (defaultMain, testGroup)
+import Test.Tasty         (defaultMain, testGroup)
 
 import Network.NineP
 

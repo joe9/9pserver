@@ -11,5 +11,5 @@ import Network.NineP.Functions
 
 -- convenience function to create a directory FSItem
 directory :: RawFilePath -> FSItemId -> FSItem (Context u)
-directory name index = FSItem Occupied (dirDetails name index) mempty index
+directory name index = FSItem Occupied (dirDetails name index) (mkAbsolutePath name) index
 

@@ -588,12 +588,13 @@ dirWalk newfid path parentQids [] c =
               (cFSItemFids c)
         })
 dirWalk newfid path parentQids (f:fs) c =
-  case getOne ((cFSItems c) @= path) of
-    Nothing -> (Right parentQids, c)
-    Just fsItem ->
-          ((dWalk . fDetails) fsItem)
-            newfid
-            (AbsolutePath (combine (unAbsolutePath path) f))
-            (parentQids ++ [(stQid . dStat . fDetails) fsItem])
-            fs
-            c
+  let newPath = AbsolutePath (combine (unAbsolutePath path) f)
+  in case getOne ((cFSItems c) @= newPath) of
+        Nothing -> (Right parentQids, c)
+        Just fsItem ->
+            ((dWalk . fDetails) fsItem)
+                newfid
+                newPath
+                (parentQids ++ [(stQid . dStat . fDetails) fsItem])
+                fs
+                c

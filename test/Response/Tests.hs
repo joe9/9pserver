@@ -9,13 +9,14 @@ import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString               as BS
 import           Data.Default
 import qualified Data.HashMap.Strict           as HashMap
+import           Data.IxSet.Typed              as IxSet
 import           Data.Serialize
 import           Data.Tree
 import qualified Data.Vector                   as V
-import  Data.IxSet.Typed                   as IxSet
 import           Protolude                     hiding (get, put)
 import           Test.Tasty
 import           Test.Tasty.HUnit
+import           Text.Groom
 
 import           Data.NineP
 import           Data.NineP.OpenMode
@@ -61,17 +62,20 @@ tests =
 
 testContext :: Context ()
 testContext =
-  def {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
+  def
+  {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
 testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
   treeToFSItems
     (Node
-        (directory, "/")
-        [ Node (writeOnlyFile, "in") []
-        , Node (readOnlyFile, "out") []
-        , Node (directory, "dir1") [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
-        ])
+       (directory, "/")
+       [ Node (writeOnlyFile, "in") []
+       , Node (readOnlyFile, "out") []
+       , Node
+           (directory, "dir1")
+           [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
+       ])
 
 testVersion01 :: Assertion
 testVersion01 =
@@ -154,11 +158,13 @@ testWalk02 =
   in fst result @?= Right (Rwalk [])
 
 testWalk03 :: Assertion
-testWalk03 =
+testWalk03 = do
   let attachresult = attach (Tattach 0 0xffffffff "root" "") testContext
-      statresult = stat (Tstat 0) (snd attachresult)
+  (fst attachresult) @?= (Right (Rattach (Qid [Qid.Directory] 0 0)))
+  let statresult = stat (Tstat 0) (snd attachresult)
       result = walk (Twalk 0 1 ["dir1"]) (snd statresult)
-  in fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3])
+--   (putStrLn . groom . cFSItems . snd) statresult
+  fst result @?= Right (Rwalk [Qid [Qid.Directory] 0 3])
 
 testWalk04 :: Assertion
 testWalk04 =
@@ -200,10 +206,13 @@ testClunk02 = do
   openresult <- open (Topen 1 Write) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing Nothing (FidId 0)), (1, FidState Nothing Nothing (FidId 1))]
+    [ (0, FidState Nothing Nothing (FidId 0))
+    , (1, FidState Nothing Nothing (FidId 1))
+    ]
   let result = clunk (Tclunk 1) (snd openresult)
   fst result @?= Right Rclunk
-  (HashMap.toList . cFids . snd) result @?= [(0, FidState Nothing Nothing (FidId 0))]
+  (HashMap.toList . cFids . snd) result @?=
+    [(0, FidState Nothing Nothing (FidId 0))]
 
 testReadDirectoryDir1 :: Assertion
 testReadDirectoryDir1 = do
@@ -213,12 +222,20 @@ testReadDirectoryDir1 = do
   openresult <- open (Topen 1 Read) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 3) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing Nothing (FidId 0)), (1, FidState Nothing Nothing (FidId 3))]
+    [ (0, FidState Nothing Nothing (FidId 0))
+    , (1, FidState Nothing Nothing (FidId 1))
+    ]
+  (IxSet.toList . cFSItemFids . snd) openresult @?=
+    [ (FSItemFid (FSItemId 0) (FidId 0))
+    , (FSItemFid (FSItemId 3) (FidId 1))
+    ]
   result <- read (Tread 1 0 8168) (snd openresult)
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
     ((ReadResponse . BS.concat . fmap statBS)
-       [writeOnlyFile "/dir1/in" (FSItemId 4), readOnlyFile "/dir1/out" (FSItemId 5)])
+       [ writeOnlyFile "/dir1/in" (FSItemId 4)
+       , readOnlyFile "/dir1/out" (FSItemId 5)
+       ])
 
 --       walkresult = walk (Twalk 0 1 []) (snd statresult)
 --   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems testContexts) V.! 4))
@@ -230,13 +247,18 @@ testReadDirectoryRoot = do
   openresult <- open (Topen 1 Read) (snd walkresult)
   fst openresult @?= Right (Ropen (Qid [Qid.Directory] 0 0) 8169)
   (HashMap.toList . cFids . snd) openresult @?=
-    [(0, FidState Nothing Nothing (FidId 0)), (1, FidState Nothing Nothing (FidId 1))]
+    [ (0, FidState Nothing Nothing (FidId 0))
+    , (1, FidState Nothing Nothing (FidId 1))
+    ]
   result <- read (Tread 1 0 8168) (snd openresult)
   --   result @?= Right ((Rread . runPut . put . dStat . fDetails) ( (cFSItems testContexts) V.! 4))
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
     ((ReadResponse . BS.concat . fmap statBS)
-       [writeOnlyFile "/in" (FSItemId 1), readOnlyFile "/out" (FSItemId 2), directory "/dir1" (FSItemId 3)])
+       [ writeOnlyFile "/in" (FSItemId 1)
+       , readOnlyFile "/out" (FSItemId 2)
+       , directory "/dir1" (FSItemId 3)
+       ])
 
 testStatWriteOnlyFile :: Assertion
 testStatWriteOnlyFile =
