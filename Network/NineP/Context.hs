@@ -325,3 +325,6 @@ fsItemAbsoluteName name
   | name == "/" = name
   | hasTrailingPathSeparator name = dropTrailingPathSeparator name
   | otherwise = name
+
+mkAbsolutePath :: RawFilePath -> AbsolutePath
+mkAbsolutePath = AbsolutePath . fsItemAbsoluteName

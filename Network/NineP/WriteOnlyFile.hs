@@ -23,7 +23,7 @@ import Network.NineP.Error
 import Network.NineP.Functions
 
 writeOnlyFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) mempty index
+writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) (mkAbsolutePath name) index
 
 writeOnlyFileDetails :: RawFilePath -> FSItemId -> Details (Context u)
 writeOnlyFileDetails name index =

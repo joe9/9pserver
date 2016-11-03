@@ -16,7 +16,7 @@ import Network.NineP.Error
 import Network.NineP.Functions
 
 readOnlyFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-readOnlyFile name index = FSItem Occupied (readOnlyFileDetails name index) mempty index
+readOnlyFile name index = FSItem Occupied (readOnlyFileDetails name index) (mkAbsolutePath name) index
 
 readOnlyFileDetails :: RawFilePath -> FSItemId -> Details (Context u)
 readOnlyFileDetails name index =

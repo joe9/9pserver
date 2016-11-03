@@ -52,9 +52,9 @@ sampleTree =
     ]
 
 sampleDir, sampleFile :: RawFilePath -> FSItemId -> FSItem (Context u)
-sampleDir name index = FSItem Occupied (dirDetails name index) (AbsolutePath name) index
+sampleDir name index = FSItem Occupied (dirDetails name index) (mkAbsolutePath name) index
 
-sampleFile name index = FSItem Occupied (sampleFileDetails name index)  (AbsolutePath name) index
+sampleFile name index = FSItem Occupied (sampleFileDetails name index) (mkAbsolutePath name) index
 
 resetContext :: (Context u) -> (Context u)
 resetContext c = c {cFids = HashMap.empty}

@@ -92,5 +92,6 @@ test-suite NinePServer-test
                      , tasty
                      , tasty-hunit
                      , async
+                     , ixset-typed
   other-extensions: NoImplicitPrelude, OverloadedStrings
   default-language:    Haskell2010

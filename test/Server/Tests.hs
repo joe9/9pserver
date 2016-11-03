@@ -21,6 +21,8 @@ import           Test.Tasty.HUnit
 import BitMask
 
 import           Data.NineP
+import           Data.IxSet.Typed as IxSet
+import           Data.Tree
 import qualified Data.NineP.MessageTypes as MT
 import           Data.NineP.OpenMode
 import           Data.NineP.Qid          hiding (Directory)
@@ -70,18 +72,27 @@ tests socket = do
 
 --     , testCase "testClunk02" (testClunk02 socket)
 testContext :: Context ()
-testContext = def {cFSItems = testFSItemsList}
+testContext =
+  def {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
-testFSItemsList :: V.Vector (FSItem (Context u))
+testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
-  V.fromList
-    [ directory "/" 0
-    , writeOnlyFile "/in" 1
-    , readOnlyFile "/out" 2
-    , directory "/dir1" 3
-    , writeOnlyFile "/dir1/in" 4
-    , readOnlyFile "/dir1/out" 5
-    ]
+  treeToFSItems
+    (Node
+        (directory, "/")
+        [ Node (writeOnlyFile, "in") []
+        , Node (readOnlyFile, "out") []
+        , Node (directory, "dir1") [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
+        ])
+
+--   V.fromList
+--     [ directory "/" 0
+--     , writeOnlyFile "/in" 1
+--     , readOnlyFile "/out" 2
+--     , directory "/dir1" 3
+--     , writeOnlyFile "/dir1/in" 4
+--     , readOnlyFile "/dir1/out" 5
+--     ]
 
 sendMessageWithTag
   :: ToNinePFormat a
@@ -264,7 +275,7 @@ testReadDirectoryDir1 socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [writeOnlyFile "/dir1/in" 4, readOnlyFile "/dir1/out" 5])
+       [writeOnlyFile "/dir1/in" (FSItemId 4), readOnlyFile "/dir1/out" (FSItemId 5)])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
@@ -279,7 +290,7 @@ testReadDirectoryRoot socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [writeOnlyFile "/in" 1, readOnlyFile "/out" 2, directory "/dir1" 3])
+       [writeOnlyFile "/in" (FSItemId 1), readOnlyFile "/out" (FSItemId 2), directory "/dir1" (FSItemId 3)])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
 
