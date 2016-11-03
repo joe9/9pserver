@@ -44,6 +44,7 @@ Library
               , posix-paths
               , unix
               , containers
+              , ixset-typed
   Exposed-modules:
                   Network.NineP
                   Network.NineP.Error

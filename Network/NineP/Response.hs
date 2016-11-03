@@ -8,6 +8,8 @@ import qualified Data.HashMap.Strict              as HashMap
 import           Data.Maybe
 import           Data.String.Conversions
 import qualified Data.Vector                      as V
+import qualified Data.IxSet.Typed                      as IxSet
+import Data.IxSet.Typed hiding (null)
 import           GHC.Show
 import           Protolude                        hiding (show)
 import           System.Posix.ByteString.FilePath
@@ -82,18 +84,12 @@ rerror = Left . Rerror . showNineError
 -- if fid is already in use, error out
 attach :: Tattach -> (Context u) -> (Either Rerror Rattach, (Context u))
 attach (Tattach fid afid uname aname) c =
-  case HashMap.lookup fid (cFids c) of
+  case getFSItemOfFid fid c of
     Nothing ->
       if aname == "/" || BS.null aname || fid == 0
-        then let f d =
-                   runEitherFunction
-                     (((dAttach . fDetails) d) fid afid uname aname 0 d c)
+        then runEitherFunction
+                     (((dAttach . fDetails) fsItem) fid afid uname aname fsItem c)
                      Rattach
-             in maybe
-                  ( rerror (OtherError "attach: 0 attach point does not exist")
-                  , c)
-                  f
-                  ((cFSItems c) V.!? 0)
         else (rerror (OtherError "attach: invalid attach point"), c)
     Just _ -> (rerror (OtherError "attach: fid is already in use"), c)
 
@@ -126,12 +122,10 @@ flush (Tflush _) c = (Right Rflush, c)
 --  TODO This request will fail if the client does not have write permission in the parent directory.
 remove :: Tremove -> (Context u) -> (Either Rerror Rremove, (Context u))
 remove (Tremove fid) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
-      maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
-      where f d =
-              runMaybeFunction (((dRemove . fDetails) d) fid fds d c) Rremove
+  case getFSItemOfFid fid c of
+    Nothing -> (rerror (OtherError "create: invalid fid"), c)
+    Just d ->
+              runMaybeFunction (((dRemove . fDetails) d) fid d c) Rremove
 
 -- ropen (Msg _ t (Topen fid mode)) = do
 --     f <- lookup fid
@@ -144,7 +138,7 @@ open (Topen fid mode) c =
   case HashMap.lookup fid (cFids c) of
     Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
     Just fds ->
-      case (cFSItems c) V.!? (fidFSItemsIndex fds) of
+      case getFSItemOfFid fid c of
         Nothing -> return (rerror EInval, c)
         Just d -> do
           result <- ((dOpen . fDetails) d) fid mode fds d c
@@ -152,13 +146,11 @@ open (Topen fid mode) c =
 
 create :: Tcreate -> (Context u) -> (Either Rerror Rcreate, (Context u))
 create (Tcreate fid name permissions mode) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
-      maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
-      where f d =
+  case getFSItemOfFid fid c of
+    Nothing -> (rerror (OtherError "create: invalid fid"), c)
+    Just fsItem ->
               runEitherFunction
-                (((dCreate . fDetails) d) fid name permissions mode d c)
+                (((dCreate . fDetails) fsItem) fid name permissions mode fsItem c)
                 (\(a, b) -> Rcreate a b)
 
 -- rread :: (Monad m, EmbedIO m) => Msg -> Nine m [Msg]
@@ -181,25 +173,23 @@ create (Tcreate fid name permissions mode) c =
 --             let d = runPut $ mapM_ put s
 --             mapM (return . Msg TRread t . Rread) $ splitMsg (B.drop (fromIntegral offset) d) $ fromIntegral u
 -- TODO split based on offset and count
+-- TODO move the lookups of fsItem and fid to called functions
 read :: Tread -> (Context u) -> IO (ReadResponse, Context u)
 read (Tread fid offset count) c =
   case HashMap.lookup fid (cFids c) of
     Nothing ->
       return ((ReadError . showNineError . ENoFile) "fid cannot be found", c)
     Just fds ->
-      case (cFSItems c) V.!? (fidFSItemsIndex fds) of
+      case getFSItemOfFid fid c of
         Nothing -> return ((ReadError . showNineError) EInval, c)
         Just d  -> ((dRead . fDetails) d) fid offset count fds d c
 
 write :: Twrite -> (Context u) -> IO (Either Rerror Rwrite, (Context u))
 write (Twrite fid offset dat) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
-      case (cFSItems c) V.!? (fidFSItemsIndex fds) of
-        Nothing -> return (rerror EInval, c)
-        Just d -> do
-          result <- ((dWrite . fDetails) d) fid offset dat fds d c
+  case getFSItemOfFid fid c of
+    Nothing -> return (rerror (OtherError "write: invalid fid"), c)
+    Just fsItem -> do
+          result <- ((dWrite . fDetails) fsItem) fid offset dat fsItem c
           return (runEitherFunction result Rwrite)
 
 checkBlockedReads :: (Context u) -> IO ([(Tag, Rerror)], (Context u))
@@ -227,21 +217,18 @@ checkBlockedRead blockedRead = do
 
 stat :: Tstat -> (Context u) -> (Either Rerror Rstat, (Context u))
 stat (Tstat fid) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
-      maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
-      where f d = runEitherFunction (((dReadStat . fDetails) d) fid d c) Rstat
+  case getFSItemOfFid fid c of
+    Nothing -> (rerror (ENoFile "stat: fid cannot be found"), c)
+    Just fsItem ->
+      runEitherFunction (((dReadStat . fDetails) fsItem) fid fsItem c) Rstat
 
 wstat :: Twstat -> (Context u) -> (Either Rerror Rwstat, (Context u))
 wstat (Twstat fid stat) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
-      maybe (rerror EInval, c) f ((cFSItems c) V.!? (fidFSItemsIndex fds))
-      where f d =
+  case getFSItemOfFid fid c of
+    Nothing -> (rerror (OtherError "wstat: invalid fid"), c)
+    Just fsItem ->
               runMaybeFunction
-                (((dWriteStat . fDetails) d) fid stat fds d c)
+                (((dWriteStat . fDetails) fsItem) fid stat fsItem c)
                 Rwstat
 
 -- TODO ../
@@ -250,34 +237,35 @@ walk (Twalk fid newfid nwnames) c
   | isJust (HashMap.lookup newfid (cFids c)) && fid /= newfid =
     (rerror (OtherError "walk: proposed newfid is already in use"), c)
   | otherwise =
-    case HashMap.lookup fid (cFids c) of
+    case getFSItemOfFid fid c of
       Nothing -> (rerror (OtherError "walk: invalid fid"), c)
-      Just fidState ->
+      Just fsItem ->
         if null (filterOutJustSlash nwnames)
           then ( Right (Rwalk [])
                , c
-                 { cFids =
-                     HashMap.insert
-                       newfid
-                       (FidState Nothing Nothing (fidFSItemsIndex fidState))
-                       (cFids c)
-                 })
-          else let f fsItem =
-                     runEitherFunction
+                    { cFids =
+                        HashMap.insert
+                        newfid
+                        (FidState Nothing Nothing (FidId newfid))
+                        (cFids c)
+                    , cFSItemFids =
+                        IxSet.updateIx
+                            (FidId newfid)
+                            (FSItemFid (fsItemId fsItem) (FidId newfid))
+                            (cFSItemFids c)
+                    })
+          else runEitherFunction
                        (((dWalk . fDetails) fsItem)
                           newfid
-                          ((dAbsoluteName . fDetails) fsItem)
+                          (fAbsoluteName fsItem)
                           []
                           (filterOutJustSlash nwnames)
                           c)
                        Rwalk
-               in maybe
-                    (rerror (OtherError "walk: invalid FSItemsIndex"), c)
-                    f
-                    ((cFSItems c) V.!? (fidFSItemsIndex fidState))
 
 filterOutJustSlash :: [RawFilePath] -> [RawFilePath]
 filterOutJustSlash = filter ((/=) "/")
+
 -- getStat :: (Monad m, EmbedIO m) => NineFile m -> Nine m Stat
 -- getStat f = do
 --     let fixDirBit = (case f of

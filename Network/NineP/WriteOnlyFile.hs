@@ -20,10 +20,10 @@ import Network.NineP.Context
 import Network.NineP.Error
 import Network.NineP.Functions
 
-writeOnlyFile :: RawFilePath -> FSItemsIndex -> FSItem (Context u)
-writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) []
+writeOnlyFile :: RawFilePath -> FSItemId -> FSItem (Context u)
+writeOnlyFile name index = FSItem Occupied (writeOnlyFileDetails name index) mempty index
 
-writeOnlyFileDetails :: RawFilePath -> FSItemsIndex -> Details (Context u)
+writeOnlyFileDetails :: RawFilePath -> FSItemId -> Details (Context u)
 writeOnlyFileDetails name index =
   Details
   { dOpen = writeOnlyFileOpen
@@ -43,8 +43,8 @@ writeOnlyFileDetails name index =
   }
 
 --   , dWrite = fileWrite
-writeOnlyFileStat :: FSItemsIndex -> Stat
-writeOnlyFileStat index -- if it is not a directory, it is a file
+writeOnlyFileStat :: FSItemId -> Stat
+writeOnlyFileStat (FSItemId index) -- if it is not a directory, it is a file
  =
   Stat
   { stTyp = 0
@@ -106,11 +106,10 @@ sampleWriteToOutReadOpenFids
   :: Fid
   -> Offset
   -> ByteString
-  -> FidState
   -> FSItem s
   -> (Context u)
   -> IO (Either NineError Count, (Context u))
-sampleWriteToOutReadOpenFids fid offset bs fidState me c = do
+sampleWriteToOutReadOpenFids fid offset bs me c = do
   let fids = cFids c
   case findIndexUsingName "/out" (cFSItems c) of
     Nothing -> return (Left (OtherError "Nothing to write to"), c)
@@ -120,13 +119,13 @@ sampleWriteToOutReadOpenFids fid offset bs fidState me c = do
       writeToOpenChannelsOfFSItemAtIndex outFSItemIndex bs (cFids c)
       return ((Right . fromIntegral . BS.length) bs, c)
 
-writeToOpenChannelsOfFSItemAtIndex :: FSItemsIndex
+writeToOpenChannelsOfFSItemAtIndex :: FSItemId
                                    -> ByteString
                                    -> HashMap.HashMap Fid FidState
                                    -> IO ()
 writeToOpenChannelsOfFSItemAtIndex i bs =
   mapM_ (\f -> writeToMaybeQueue (fidQueue f) bs) .
-  HashMap.filter (\f -> i == fidFSItemsIndex f && isJust (fidQueue f))
+  HashMap.filter (\f -> i == fidFSItemId f && isJust (fidQueue f))
 
 writeToMaybeQueue :: Maybe (TQueue ByteString) -> ByteString -> IO ()
 writeToMaybeQueue (Nothing) _ = return ()

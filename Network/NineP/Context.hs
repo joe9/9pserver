@@ -1,31 +1,29 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds, MultiParamTypeClasses, FlexibleInstances,
+  DeriveDataTypeable #-}
 
 module Network.NineP.Context where
 
-import           Control.Concurrent.STM.TQueue
-import qualified Data.ByteString                  as BS
-import           Data.Default
-import qualified Data.HashMap.Strict              as HashMap
-import           Data.List
-import           Data.Tree
-import           Data.Serialize
-import           Data.Vector                      (Vector)
-import qualified Data.Vector                      as V
-import qualified Data.Vector.Mutable              as DVM
-import qualified GHC.Show                         as Show
-import           Protolude                        hiding (put)
-import           System.Posix.ByteString.FilePath
-import           System.Posix.FilePath
-import           Text.Groom
+import Control.Concurrent.STM.TQueue
+import Data.Default
+import qualified Data.ByteString as BS
+import qualified Data.HashMap.Strict as HashMap
+import Data.List
+import Data.IxSet.Typed as IxSet hiding (flatten)
+import Data.Tree
+import qualified GHC.Show as Show
+import Protolude hiding (put, Proxy)
+import System.Posix.ByteString.FilePath
+import System.Posix.FilePath
+import Text.Groom
 
-import           Data.NineP
-import           Data.NineP.OpenMode
-import qualified Data.NineP.OpenMode as OpenMode
-import           Data.NineP.Qid
-import qualified Data.NineP.Qid      as Qid
-import           Data.NineP.Stat
-import qualified Data.NineP.Stat     as Stat
+import Data.NineP
+import Data.NineP.OpenMode
+import Data.NineP.Qid
+import qualified Data.NineP.Qid as Qid
+import Data.NineP.Stat
+import qualified Data.NineP.Stat as Stat
 
 import Network.NineP.Error
 
@@ -98,38 +96,103 @@ import Network.NineP.Error
 -- <geekosaur> (and, if you are doing it often, this is where a dcache-like thing might be handy)
 -- if an item is removed, switch the Used to False.
 -- this is to avoid vector indexes getting changed when a delete happens
-data Occupied
-  = Occupied
-  | Vacant
-  deriving (Eq, Show)
+data Occupied = Occupied | Vacant
+  deriving (Eq, Show, Ord, Typeable)
 
 data FSItem s = FSItem
   { fOccupied :: Occupied
-  , fDetails  :: Details s
-  , fOpenFids :: [Fid]
+  , fDetails :: Details s
+  , fAbsoluteName :: AbsolutePath
+  , fsItemId :: FSItemId -- primary key, used by Qid.Path
   }
 
-instance Show (FSItem s) where
-  show f =
-    unwords
-      [ (groom . dAbsoluteName . fDetails) f
-      , (groom . fOccupied) f
-      , (groom . dVersion . fDetails) f
-      , (groom . dStat . fDetails) f
-      , groom (fOpenFids f)
-      ]
+newtype AbsolutePath = AbsolutePath {unAbsolutePath :: RawFilePath}
+  deriving (Eq, Show, Ord)
 
-type FSItemsIndex = Int
+newtype FSItemId = FSItemId Int
+  deriving (Eq, Show, Ord)
+
+type FSItemIxs = '[FSItemId, AbsolutePath, Occupied]
+
+type IxFSItem s = IxSet FSItemIxs (FSItem s)
+
+instance Indexable FSItemIxs (FSItem s) where
+  indices =
+    ixList
+      (ixFun (\fsi -> [fsItemId fsi]))
+      (ixFun (\fsi -> [fAbsoluteName fsi]))
+      (ixFun (\fsi -> [fOccupied fsi]))
+
+-- ideally, would prefer this to be Fid. It does not make sense to
+--   have Id of an Id (Fid is itself an Id). But, Fid as per the
+--   9P2000 spec is a Word32 and it gets confusing to have a different
+--   type for that.
+newtype FidId = FidId Fid
+  deriving (Eq, Show, Ord)
 
 data FidState = FidState
-  { fidQueue        :: Maybe (TQueue ByteString)
-  , fidResponse     :: Maybe ByteString
-  , fidFSItemsIndex :: FSItemsIndex
+  { fidQueue :: Maybe (TQueue ByteString)
+  , fidResponse :: Maybe ByteString
+  , fFidId :: FidId -- primary key
   } deriving (Eq)
+
+data FSItemFid = FSItemFid
+  { ffFSItemId :: FSItemId
+  , ffFid :: FidId
+  } deriving (Eq, Show, Ord)
+
+type FSItemFidIxs = '[FSItemId, FidId]
+
+type IxFSItemFid = IxSet FSItemFidIxs FSItemFid
+
+instance Indexable FSItemFidIxs FSItemFid where
+  indices = ixList (ixFun (\i -> [ffFSItemId i])) (ixFun (\i -> [ffFid i]))
+
+data Context u = Context
+  { cFids :: HashMap.HashMap Fid FidState
+    -- similar to an inode map,
+    -- representing the filesystem tree, with the root being the 0 always
+    -- TODO: Would have to change this to an IxSet to make it easier to
+    --        search using dAbsoluteName and also have an index to use
+    --        for Qid.Path
+  , cFSItems :: IxSet FSItemIxs (FSItem (Context u))
+  , cMaxMessageSize :: Int
+  , cBlockedReads :: [BlockedRead]
+  , cUserState :: u
+  , cFSItemFids :: IxSet FSItemFidIxs FSItemFid
+  , cFSItemIdCounter :: Int
+  }
+
+getFSItemOfFid :: Fid -> Context u -> Maybe (FSItem (Context u))
+getFSItemOfFid fid c =
+    IxSet.getOne ((cFSItemFids c) @= FidId fid) >>=
+            (\ff -> IxSet.getOne ((cFSItems c) @= ffFSItemId ff))
 
 instance Show FidState where
   show (FidState Nothing r i) = "FidState Nothing " ++ show r ++ " " ++ show i
   show (FidState (Just _) r i) = "FidState <TQueue> " ++ show r ++ " " ++ show i
+
+instance Show (FSItem s) where
+  show f =
+    unwords
+      [ (groom . fsItemId) f
+      , (groom . fAbsoluteName) f
+      , (groom . fOccupied) f
+      , (groom . dVersion . fDetails) f
+      , (groom . dStat . fDetails) f
+      ]
+
+instance Eq (FSItem s) where
+  a == b = (fsItemId a) == (fsItemId b)
+
+instance Ord (FSItem s) where
+  compare a b = compare (fsItemId a) (fsItemId b)
+
+type FSItemsIndex = Int
+
+instance Monoid AbsolutePath where
+  mempty = AbsolutePath BS.empty
+  mappend (AbsolutePath a) (AbsolutePath b) = AbsolutePath (combine a b)
 
 data ReadResponse
   = ReadError ByteString
@@ -139,27 +202,14 @@ data ReadResponse
   deriving (Eq)
 
 instance Show ReadResponse where
-  show (ReadError bs)    = "ReadError " ++ show bs
+  show (ReadError bs) = "ReadError " ++ show bs
   show (ReadResponse bs) = "ReadResponse " ++ show bs
-  show (ReadQ _ count)   = "ReadQ <TQueue> " ++ show count
+  show (ReadQ _ count) = "ReadQ <TQueue> " ++ show count
 
 data BlockedRead = BlockedRead
-  { bTag   :: !Tag
+  { bTag :: !Tag
   , bCount :: !Word32
   , bAsync :: Async Tag
-  }
-
-data Context u = Context
-  { cFids           :: HashMap.HashMap Fid FidState
-    -- similar to an inode map,
-    -- representing the filesystem tree, with the root being the 0 always
-    -- TODO: Would have to change this to an IxSet to make it easier to
-    --        search using dAbsoluteName and also have an index to use
-    --        for Qid.Path
-  , cFSItems        :: Vector (FSItem (Context u))
-  , cMaxMessageSize :: Int
-  , cBlockedReads   :: [BlockedRead]
-  , cUserState      :: u
   }
 
 type IOUnit = Word32
@@ -168,19 +218,18 @@ type IOUnit = Word32
 data Details s = Details
   { dOpen :: Fid -> OpenMode -> FidState -> FSItem s -> s -> IO (Either NineError (Qid, IOUnit), s)
     --   , dWalk :: Fid -> NewFid -> [ByteString] -> FidState -> FSItem s -> s -> (Either NineError [Qid], s)
-  , dWalk :: NewFid -> RawFilePath -> [Qid] -> [RawFilePath] -> s -> (Either NineError [Qid], s)
+  , dWalk :: NewFid -> AbsolutePath -> [Qid] -> [RawFilePath] -> s -> (Either NineError [Qid], s)
   , dRead :: Fid -> Offset -> Count -> FidState -> FSItem s -> s -> IO (ReadResponse, s)
   , dReadStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
-  , dWriteStat :: Fid -> Stat -> FidState -> FSItem s -> s -> (Maybe NineError, s)
+  , dWriteStat :: Fid -> Stat -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
-  , dWrite :: Fid -> Offset -> ByteString -> FidState -> FSItem s -> s -> IO (Either NineError Count, s)
+  , dWrite :: Fid -> Offset -> ByteString -> FSItem s -> s -> IO (Either NineError Count, s)
   , dClunk :: Fid -> FSItem s -> s -> (Maybe NineError, s)
   , dFlush :: FSItem s -> s -> s
-  , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItemsIndex -> FSItem s -> s -> (Either NineError Qid, s)
+  , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItem s -> s -> (Either NineError Qid, s)
   , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
-  , dRemove :: Fid -> FidState -> FSItem s -> s -> (Maybe NineError, s)
+  , dRemove :: Fid -> FSItem s -> s -> (Maybe NineError, s)
   , dVersion :: Word32
-  , dAbsoluteName :: RawFilePath
   }
 
 -- stModeToQType :: FSItem (Context u) -> [QType]
@@ -223,20 +272,20 @@ stModeToQType fsItem =
 -- TODO : Add to FileSystem
 instance Default u =>
          Default (Context u) where
-  def = Context HashMap.empty V.empty 8192 [] def
+  def = Context HashMap.empty IxSet.empty 8192 [] def IxSet.empty 0
   --   def = Context HashMap.empty V.empty 512 []
---   def = Context HashMap.empty sampleFSItemsList 8192 []
 
+--   def = Context HashMap.empty sampleFSItemsList 8192 []
 showFSItems :: Context u -> IO ()
-showFSItems = putStrLn . groom . V.toList . V.indexed . cFSItems
+showFSItems = putStrLn . groom . cFSItems
 
 -- *Main Protolude Data.Tree Text.Groom > putStrLn . groom . V.toList . V.indexed . treeTofsitemsvector $ sampleTree
-treeToFSItemsVector
-  :: Tree ((RawFilePath -> FSItemsIndex -> FSItem (Context u)), RawFilePath)
-  -> V.Vector (FSItem (Context u))
-treeToFSItemsVector tree =
-  (V.fromList .
-   zipWith (\(f, name) i -> f name i) (flatten (absolutePath "" tree)))
+treeToFSItems
+  :: Tree ((RawFilePath -> FSItemId -> FSItem (Context u)), RawFilePath)
+  -> IxSet FSItemIxs (FSItem (Context u))
+treeToFSItems tree =
+  (IxSet.fromList .
+   zipWith (\(f, name) i -> f name (FSItemId i)) (flatten (absolutePath "" tree)))
     [0 ..]
 
 -- for testing absolutePath
@@ -257,5 +306,22 @@ treeToFSItemsVector tree =
 -- this is easier to understand than the foldTree version
 absolutePath :: RawFilePath -> Tree (t, RawFilePath) -> Tree (t, RawFilePath)
 absolutePath parent (Node (f, name) xs) =
-  let builtName = combine parent name
+  let builtName = fsItemAbsoluteName (combine parent name)
   in Node (f, builtName) (fmap (absolutePath builtName) xs)
+
+fsItemName :: RawFilePath -> RawFilePath
+fsItemName name
+  | isRelative name =
+    panic "fsItemName: file or directory name must be absolute"
+  | name == "/" = name
+  | hasTrailingPathSeparator name =
+    takeFileName (dropTrailingPathSeparator name)
+  | otherwise = takeFileName name
+
+fsItemAbsoluteName :: RawFilePath -> RawFilePath
+fsItemAbsoluteName name
+  | isRelative name =
+    panic "fsItemName: file or directory name must be absolute"
+  | name == "/" = name
+  | hasTrailingPathSeparator name = dropTrailingPathSeparator name
+  | otherwise = name
