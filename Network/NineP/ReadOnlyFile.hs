@@ -34,7 +34,6 @@ readOnlyFileDetails name index =
   , dCreate = fdCreate
   , dRemove = readOnlyFileRemove
   , dVersion = 0
-  , dAbsoluteName = fsItemAbsoluteName name
   }
 
 readOnlyFileStat :: FSItemId -> Stat
@@ -72,11 +71,10 @@ readOnlyFileWrite
   :: Fid
   -> Offset
   -> ByteString
-  -> FidState
   -> FSItem s
   -> s
   -> IO (Either NineError Count, s)
-readOnlyFileWrite _ _ _ _ _ c = return (Left (OtherError "Read Only File"), c)
+readOnlyFileWrite _ _ _ _ c = return (Left (OtherError "Read Only File"), c)
 
 readOnlyFileRemove
   :: Fid

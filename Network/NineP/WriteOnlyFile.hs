@@ -6,6 +6,8 @@ module Network.NineP.WriteOnlyFile where
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
 import qualified Data.HashMap.Strict              as HashMap
+import qualified Data.IxSet.Typed              as IxSet
+import Data.IxSet.Typed
 import           Protolude                        hiding (put)
 import           System.Posix.ByteString.FilePath
 
@@ -39,7 +41,6 @@ writeOnlyFileDetails name index =
   , dCreate = fdCreate
   , dRemove = writeOnlyFileRemove
   , dVersion = 0
-  , dAbsoluteName = fsItemAbsoluteName name
   }
 
 --   , dWrite = fileWrite
@@ -91,11 +92,10 @@ writeOnlyFileRead _ _ _ _ _ c =
 
 writeOnlyFileRemove
   :: Fid
-  -> FidState
   -> FSItem (Context u)
   -> (Context u)
   -> (Maybe NineError, (Context u))
-writeOnlyFileRemove _ _ _ c = (Just (OtherError "Write Only File"), c)
+writeOnlyFileRemove _ _ c = (Just (OtherError "Write Only File"), c)
 
 -- when a file is opened OREAD, then it creates a channel
 -- when anything writes to that channel, any reads from that file
@@ -110,22 +110,21 @@ sampleWriteToOutReadOpenFids
   -> (Context u)
   -> IO (Either NineError Count, (Context u))
 sampleWriteToOutReadOpenFids fid offset bs me c = do
-  let fids = cFids c
-  case findIndexUsingName "/out" (cFSItems c) of
+  case IxSet.getOne ((cFSItems c) @= AbsolutePath "/out") of
     Nothing -> return (Left (OtherError "Nothing to write to"), c)
-    (Just outFSItemIndex)
+    (Just outFSItem)
     -- write to all /out read channels
      -> do
-      writeToOpenChannelsOfFSItemAtIndex outFSItemIndex bs (cFids c)
+      writeToOpenChannelsOfFSItemAtIndex (fsItemId outFSItem) bs c
       return ((Right . fromIntegral . BS.length) bs, c)
 
 writeToOpenChannelsOfFSItemAtIndex :: FSItemId
                                    -> ByteString
-                                   -> HashMap.HashMap Fid FidState
+                                   -> Context u
                                    -> IO ()
-writeToOpenChannelsOfFSItemAtIndex i bs =
-  mapM_ (\f -> writeToMaybeQueue (fidQueue f) bs) .
-  HashMap.filter (\f -> i == fidFSItemId f && isJust (fidQueue f))
+writeToOpenChannelsOfFSItemAtIndex i bs c =
+  (mapM_ (flip writeToMaybeQueue bs) . fmap (\(FidId fid) -> HashMap.lookup fid (cFids c) >>= fidQueue) . fmap ffFid . IxSet.toList) ((cFSItemFids c) @= i)
+
 
 writeToMaybeQueue :: Maybe (TQueue ByteString) -> ByteString -> IO ()
 writeToMaybeQueue (Nothing) _ = return ()
@@ -133,9 +132,9 @@ writeToMaybeQueue (Just q) bs = atomically (writeTQueue q bs)
 
 writeToOpenChannelsOf :: RawFilePath -> ByteString -> (Context u) -> IO ()
 writeToOpenChannelsOf fp bs c =
-  case fastFindIndexUsingName fp c of
+  case IxSet.getOne ((cFSItems c) @= AbsolutePath fp) of
     Nothing -> return ()
-    (Just index)
+    Just fsItem
     -- write to all read channels of FSItem at index
      -> do
-      writeToOpenChannelsOfFSItemAtIndex index bs (cFids c)
+      writeToOpenChannelsOfFSItemAtIndex (fsItemId fsItem) bs c

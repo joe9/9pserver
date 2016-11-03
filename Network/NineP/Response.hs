@@ -87,9 +87,12 @@ attach (Tattach fid afid uname aname) c =
   case getFSItemOfFid fid c of
     Nothing ->
       if aname == "/" || BS.null aname || fid == 0
-        then runEitherFunction
-                     (((dAttach . fDetails) fsItem) fid afid uname aname fsItem c)
-                     Rattach
+      then case IxSet.getOne ((cFSItems c) @= FSItemId 0) of
+            Just fsItem ->
+                runEitherFunction
+                        (((dAttach . fDetails) fsItem) fid afid uname aname fsItem c)
+                        Rattach
+            Nothing -> (rerror (OtherError "attach: fsItem 0 not found"), c)
         else (rerror (OtherError "attach: invalid attach point"), c)
     Just _ -> (rerror (OtherError "attach: fid is already in use"), c)
 
@@ -112,9 +115,10 @@ attach (Tattach fid afid uname aname) c =
 --     uc = c {cFids = HashMap.insert fid 0 (cFids c)}
 -- TODO The actual file is not removed on the server unless the fid had been opened with ORCLOSE.
 clunk :: Tclunk -> (Context u) -> (Either Rerror Rclunk, (Context u))
-clunk (Tclunk fid) c = maybe (rerror EInval, c) f ((cFSItems c) V.!? 0)
-  where
-    f d = runMaybeFunction (((dClunk . fDetails) d) fid d c) Rclunk
+clunk (Tclunk fid) c =
+  case getFSItemOfFid fid c of
+    Nothing -> (rerror (OtherError "clunk: invalid fid"), c)
+    Just d -> runMaybeFunction (((dClunk . fDetails) d) fid d c) Rclunk
 
 flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
 flush (Tflush _) c = (Right Rflush, c)

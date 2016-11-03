@@ -3,7 +3,7 @@
 
 module Network.NineP.Directory where
 
--- import           Protolude
+import           Protolude
 import           System.Posix.ByteString.FilePath
 
 import Network.NineP.Context
