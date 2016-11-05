@@ -1,0 +1,29 @@
+From a9d4f1ae666228ab3f71a15c3276225ac9b4310f Mon Sep 17 00:00:00 2001
+From: Joakim Sindholt <opensource@zhasha.com>
+Date: Sat, 4 Jun 2016 22:32:27 +0200
+Subject: [PATCH 2/2] 9p: translate O_TRUNC into OTRUNC
+
+Without this echo foo > file doesn't work as expeced because the
+truncation flag is never sent.
+---
+ fs/9p/vfs_inode.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/fs/9p/vfs_inode.c b/fs/9p/vfs_inode.c
+index f4645c5..9c840ee 100644
+--- a/fs/9p/vfs_inode.c
++++ b/fs/9p/vfs_inode.c
+@@ -192,6 +192,9 @@ int v9fs_uflags2omode(int uflags, int extended)
+ 		break;
+ 	}
+ 
++	if (uflags & O_TRUNC)
++		ret |= P9_OTRUNC;
++
+ 	if (extended) {
+ 		if (uflags & O_EXCL)
+ 			ret |= P9_OEXCL;
+-- 
+2.7.3
+
+

@@ -1,0 +1,48 @@
+From 2044be18c76f269d1fb6a0db4b0d789e8d61d7c4 Mon Sep 17 00:00:00 2001
+From: Joakim Sindholt <opensource@zhasha.com>
+Date: Sat, 4 Jun 2016 10:44:37 +0200
+Subject: [PATCH 1/2] 9p: make read/write break on partial completion
+
+The read and write calls are supposed to map more or less 1:1 with user
+space calls to the syscalls of the same name. If the server fails to
+satisfy the full request, in the case of read it's probably harmless,
+however in the case of write it is probably an error and the kernel
+should let user space decide how to proceed.
+
+This is the behavior expected and implemented by the Plan 9 kernel, and
+we should mimic that as best we can.
+
+It also saves a lot of round trips. At least one for every read call and
+almost half for every readdir call.
+---
+ net/9p/client.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/net/9p/client.c b/net/9p/client.c
+index 3fc94a4..d871615 100644
+--- a/net/9p/client.c
++++ b/net/9p/client.c
+@@ -1610,6 +1610,9 @@ p9_client_read(struct p9_fid *fid, u64 offset, struct iov_iter *to, int *err)
+ 			offset += count;
+ 		}
+ 		p9_free_req(clnt, req);
++
++		if (count != rsize)
++			break;
+ 	}
+ 	return total;
+ }
+@@ -1667,6 +1670,9 @@ p9_client_write(struct p9_fid *fid, u64 offset, struct iov_iter *from, int *err)
+ 		iov_iter_advance(from, count);
+ 		total += count;
+ 		offset += count;
++
++		if (count != rsize)
++			break;
+ 	}
+ 	return total;
+ }
+-- 
+2.7.3
+
+
