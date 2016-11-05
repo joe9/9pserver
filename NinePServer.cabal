@@ -37,7 +37,6 @@ Library
               , cereal
               , safe-exceptions
               , network-simple
-              , data-default
               , NineP
               , stm
               , groom
@@ -84,7 +83,6 @@ test-suite NinePServer-test
                      , cereal
                      , safe-exceptions
                      , network-simple
-                     , data-default
                      , stm
                      , groom
                      , posix-paths

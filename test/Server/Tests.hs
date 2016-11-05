@@ -9,7 +9,6 @@ module Server.Tests
 
 import           Data.Bits
 import qualified Data.ByteString     as BS
-import           Data.Default
 import qualified Data.HashMap.Strict as HashMap
 import           Data.Serialize
 import qualified Data.Vector         as V

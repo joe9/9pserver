@@ -7,7 +7,6 @@ module Response.Tests
 
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString               as BS
-import           Data.Default
 import qualified Data.HashMap.Strict           as HashMap
 import           Data.IxSet.Typed              as IxSet
 import           Data.Serialize

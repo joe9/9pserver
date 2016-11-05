@@ -111,7 +111,8 @@ process f tag msg c =
     Left e -> (toNinePFormat (identity (Rerror (cs e))) tag, c)
     Right d ->
       let result = f (identity d) c
-      in case traceShow (fst result) result of
+--       in case traceShow (fst result) result of
+      in case result of
            (Left e, cn)  -> (toNinePFormat e tag, cn)
            (Right m, cn) -> (toNinePFormat m tag, cn)
 
@@ -175,7 +176,8 @@ processIO f tag msg c =
     Left e -> return (toNinePFormat (identity (Rerror (cs e))) tag, c)
     Right d -> do
       eitherResult <- f (identity d) c
-      case traceShow (fst eitherResult) eitherResult of
+--       case traceShow (fst eitherResult) eitherResult of
+      case eitherResult of
         (Left e, cn)  -> return (toNinePFormat e tag, cn)
         (Right m, cn) -> return (toNinePFormat m tag, cn)
 

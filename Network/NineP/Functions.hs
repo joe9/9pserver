@@ -5,7 +5,6 @@ module Network.NineP.Functions where
 
 import           Control.Concurrent.STM.TQueue
 import qualified Data.ByteString                  as BS
-import           Data.Default
 import qualified Data.HashMap.Strict              as HashMap
 import           Data.IxSet.Typed                 as IxSet hiding
                                                             (flatten)
