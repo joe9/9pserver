@@ -52,7 +52,9 @@ Library
                   Network.NineP.Context
                   Network.NineP.Functions
                   Network.NineP.ReadOnlyFile
+                  Network.NineP.ReadOnlyPipe
                   Network.NineP.WriteOnlyFile
+                  Network.NineP.WriteOnlyPipe
                   Network.NineP.Directory
                   Network.NineP.Response
   default-language:     Haskell2010

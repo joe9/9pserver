@@ -35,7 +35,7 @@ writeOnlyFileDetails name index =
   , dStat = (writeOnlyFileStat index) {stName = fsItemName name}
   , dReadStat = readStat
   , dWriteStat = writeStat
-  , dWrite = sampleWriteToOutReadOpenFids
+  , dWrite = writeOnlyFileWrite
   , dClunk = fdClunk
   , dFlush = fdFlush
   , dAttach = fileAttach
@@ -97,46 +97,12 @@ writeOnlyFileRemove :: Fid
                     -> (Maybe NineError, (Context u))
 writeOnlyFileRemove _ _ c = (Just (OtherError "Write Only File"), c)
 
--- when a file is opened OREAD, then it creates a channel
--- when anything writes to that channel, any reads from that file
---    will read the written data.
--- In this situation, we are trying to write to any read open channels
---    of /out
-sampleWriteToOutReadOpenFids
+writeOnlyFileWrite
   :: Fid
   -> Offset
   -> ByteString
   -> FSItem s
   -> (Context u)
   -> IO (Either NineError Count, (Context u))
-sampleWriteToOutReadOpenFids fid offset bs me c = do
-  case IxSet.getOne ((cFSItems c) @= AbsolutePath "/out") of
-    Nothing -> return (Left (OtherError "Nothing to write to"), c)
-    (Just outFSItem)
-    -- write to all /out read channels
-     -> do
-      writeToOpenChannelsOfFSItemAtIndex (fsItemId outFSItem) bs c
-      return ((Right . fromIntegral . BS.length) bs, c)
-
-writeToOpenChannelsOfFSItemAtIndex :: FSItemId
-                                   -> ByteString
-                                   -> Context u
-                                   -> IO ()
-writeToOpenChannelsOfFSItemAtIndex i bs c =
-  (mapM_ (flip writeToMaybeQueue bs) .
-   fmap (\(FidId fid) -> HashMap.lookup fid (cFids c) >>= fidQueue) .
-   fmap ffFid . IxSet.toList)
-    ((cFSItemFids c) @= i)
-
-writeToMaybeQueue :: Maybe (TQueue ByteString) -> ByteString -> IO ()
-writeToMaybeQueue (Nothing) _ = return ()
-writeToMaybeQueue (Just q) bs = atomically (writeTQueue q bs)
-
-writeToOpenChannelsOf :: RawFilePath -> ByteString -> (Context u) -> IO ()
-writeToOpenChannelsOf fp bs c =
-  case IxSet.getOne ((cFSItems c) @= AbsolutePath fp) of
-    Nothing -> return ()
-    Just fsItem
-    -- write to all read channels of FSItem at index
-     -> do
-      writeToOpenChannelsOfFSItemAtIndex (fsItemId fsItem) bs c
+writeOnlyFileWrite _ _ _ _ c =
+  return (Left (ENotImplemented "writeOnlyFileWrite: "), c)

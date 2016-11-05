@@ -37,10 +37,10 @@ import Network.NineP.Context
 import Network.NineP.Directory
 import Network.NineP.Error
 import Network.NineP.Functions
-import Network.NineP.ReadOnlyFile
+import Network.NineP.ReadOnlyPipe
 import Network.NineP.Response
 import Network.NineP.Server
-import Network.NineP.WriteOnlyFile
+import Network.NineP.WriteOnlyPipe
 
 -- got this idea from
 --  https://jaspervdj.be/posts/2015-03-13-practical-testing-in-haskell.html
@@ -73,28 +73,28 @@ tests socket = do
 --     , testCase "testClunk02" (testClunk02 socket)
 testContext :: Context ()
 testContext =
-  def
-  {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
+  (defaultContext ())
+    {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
 testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
   treeToFSItems
     (Node
        (directory, "/")
-       [ Node (writeOnlyFile, "in") []
-       , Node (readOnlyFile, "out") []
+       [ Node (writeOnlyPipe, "in") []
+       , Node (readOnlyPipe, "out") []
        , Node
            (directory, "dir1")
-           [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
+           [Node (writeOnlyPipe, "in") [], Node (readOnlyPipe, "out") []]
        ])
 
 --   V.fromList
 --     [ directory "/" 0
---     , writeOnlyFile "/in" 1
---     , readOnlyFile "/out" 2
+--     , writeOnlyPipe "/in" 1
+--     , readOnlyPipe "/out" 2
 --     , directory "/dir1" 3
---     , writeOnlyFile "/dir1/in" 4
---     , readOnlyFile "/dir1/out" 5
+--     , writeOnlyPipe "/dir1/in" 4
+--     , readOnlyPipe "/dir1/out" 5
 --     ]
 sendMessageWithTag
   :: ToNinePFormat a
@@ -277,8 +277,8 @@ testReadDirectoryDir1 socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [ writeOnlyFile "/dir1/in" (FSItemId 4)
-       , readOnlyFile "/dir1/out" (FSItemId 5)
+       [ writeOnlyPipe "/dir1/in" (FSItemId 4)
+       , readOnlyPipe "/dir1/out" (FSItemId 5)
        ])
   sendMessage socket (Tclunk 1)
   receiveAndCheckMessage socket Rclunk
@@ -294,8 +294,8 @@ testReadDirectoryRoot socket = do
   receiveAndCheckMessage
     socket
     ((Rread . BS.concat . fmap statBS)
-       [ writeOnlyFile "/in" (FSItemId 1)
-       , readOnlyFile "/out" (FSItemId 2)
+       [ writeOnlyPipe "/in" (FSItemId 1)
+       , readOnlyPipe "/out" (FSItemId 2)
        , directory "/dir1" (FSItemId 3)
        ])
   sendMessage socket (Tclunk 1)

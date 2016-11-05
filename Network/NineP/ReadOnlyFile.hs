@@ -37,9 +37,9 @@ readOnlyFileDetails name index =
   , dVersion = 0
   }
 
+ -- if it is not a directory, it is a file
 readOnlyFileStat :: FSItemId -> Stat
-readOnlyFileStat (FSItemId index) -- if it is not a directory, it is a file
- =
+readOnlyFileStat (FSItemId index) =
   Stat
   { stTyp = 0
   , stDev = 0
@@ -64,9 +64,8 @@ readOnlyFileOpen
   -> FSItem (Context u)
   -> (Context u)
   -> IO (Either NineError (Qid, IOUnit), (Context u))
-readOnlyFileOpen fid mode fidState me c
-  | mode == Read = fileOpen fid mode fidState me c
-  | otherwise = return (Left (OtherError "Read Only File"), c)
+readOnlyFileOpen _ _ _ _ c =
+  return (Left (ENotImplemented "readOnlyFileOpen"), c)
 
 readOnlyFileWrite :: Fid
                   -> Offset

@@ -34,11 +34,9 @@ import qualified Data.NineP.Stat     as Stat
 import Network.NineP.Context
 import Network.NineP.Error
 
-sampleContext
-  :: Default u
-  => (Context u)
-sampleContext =
-  def
+sampleContext :: u -> Context u
+sampleContext u =
+  (defaultContext u)
   { cFSItems = sampleFSItemsList
   , cFSItemIdCounter = IxSet.size sampleFSItemsList
   }

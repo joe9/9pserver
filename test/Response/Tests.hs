@@ -28,9 +28,9 @@ import qualified Data.NineP.Stat     as Stat
 --
 import Network.NineP
 import Network.NineP.Directory
-import Network.NineP.ReadOnlyFile
+import Network.NineP.ReadOnlyPipe
 import Network.NineP.Response
-import Network.NineP.WriteOnlyFile
+import Network.NineP.WriteOnlyPipe
 
 -- got this idea from
 --  https://jaspervdj.be/posts/2015-03-13-practical-testing-in-haskell.html
@@ -62,19 +62,19 @@ tests =
 
 testContext :: Context ()
 testContext =
-  def
-  {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
+  (defaultContext ())
+    {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
 testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
   treeToFSItems
     (Node
        (directory, "/")
-       [ Node (writeOnlyFile, "in") []
-       , Node (readOnlyFile, "out") []
+       [ Node (writeOnlyPipe, "in") []
+       , Node (readOnlyPipe, "out") []
        , Node
            (directory, "dir1")
-           [Node (writeOnlyFile, "in") [], Node (readOnlyFile, "out") []]
+           [Node (writeOnlyPipe, "in") [], Node (readOnlyPipe, "out") []]
        ])
 
 testVersion01 :: Assertion
@@ -231,8 +231,8 @@ testReadDirectoryDir1 = do
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
     ((ReadResponse . BS.concat . fmap statBS)
-       [ writeOnlyFile "/dir1/in" (FSItemId 4)
-       , readOnlyFile "/dir1/out" (FSItemId 5)
+       [ writeOnlyPipe "/dir1/in" (FSItemId 4)
+       , readOnlyPipe "/dir1/out" (FSItemId 5)
        ])
 
 --       walkresult = walk (Twalk 0 1 []) (snd statresult)
@@ -253,8 +253,8 @@ testReadDirectoryRoot = do
   let statBS = runPut . put . dStat . fDetails
   fst result @?=
     ((ReadResponse . BS.concat . fmap statBS)
-       [ writeOnlyFile "/in" (FSItemId 1)
-       , readOnlyFile "/out" (FSItemId 2)
+       [ writeOnlyPipe "/in" (FSItemId 1)
+       , readOnlyPipe "/out" (FSItemId 2)
        , directory "/dir1" (FSItemId 3)
        ])
 

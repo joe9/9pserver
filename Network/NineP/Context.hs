@@ -277,13 +277,10 @@ stModeToQType fsItem =
           ])
        mode
 
--- TODO : Add to FileSystem
-instance Default u =>
-         Default (Context u) where
-  def = Context HashMap.empty IxSet.empty 8192 [] def IxSet.empty 0
-  --   def = Context HashMap.empty V.empty 512 []
+defaultContext :: u -> Context u
+defaultContext userState =
+  Context HashMap.empty IxSet.empty 8192 [] userState IxSet.empty 0
 
---   def = Context HashMap.empty sampleFSItemsList 8192 []
 showFSItems :: Context u -> IO ()
 showFSItems = putStrLn . groom . cFSItems
 
