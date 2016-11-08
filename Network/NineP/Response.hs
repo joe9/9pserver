@@ -8,7 +8,7 @@ import qualified Data.HashMap.Strict              as HashMap
 import           Data.IxSet.Typed                 hiding (null)
 import qualified Data.IxSet.Typed                 as IxSet
 import           Data.Maybe
-import           Data.String.Conversions
+import           Data.String.Conversions          (cs)
 import qualified Data.Vector                      as V
 import           GHC.Show
 import           Protolude                        hiding (show)

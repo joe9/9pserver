@@ -334,3 +334,37 @@ fsItemAbsoluteName name
 
 mkAbsolutePath :: RawFilePath -> AbsolutePath
 mkAbsolutePath = AbsolutePath . fsItemAbsoluteName
+
+addFSItem1 :: FSItem (Context u) -> Context u -> Context u
+addFSItem1 fsItem c =
+  c {cFSItems = updateIx (fsItemId fsItem) fsItem (cFSItems c)}
+
+addFSItem :: (FSItemId -> FSItem (Context u)) -> Context u -> Context u
+addFSItem f c =
+  let vacantItemId =
+        case (IxSet.getOne (cFSItems c @= Vacant)) of
+          Nothing ->
+            maybe
+              ((FSItemId . IxSet.size . cFSItems) c)
+              fsItemId
+              ((headMay . IxSet.toDescList FSItemId . cFSItems) c)
+          Just item -> fsItemId item
+      fsItem = f vacantItemId
+  in c {cFSItems = updateIx (fsItemId fsItem) fsItem (cFSItems c)}
+
+deleteFSItem1 :: FSItem (Context u) -> Context u -> Context u
+deleteFSItem1 me c =
+  c {cFSItems = updateIx (fsItemId me) (me {fOccupied = Vacant}) (cFSItems c)}
+
+deleteFSItem :: AbsolutePath -> Context u -> Context u
+deleteFSItem name c =
+  case IxSet.getOne (cFSItems c @= name) of
+    Nothing -> c
+    Just me ->
+      case IxSet.getOne (cFSItemFids c @= fsItemId me) of
+        Nothing ->
+          c
+          { cFSItems =
+              updateIx (fsItemId me) (me {fOccupied = Vacant}) (cFSItems c)
+          }
+        Just _ -> c

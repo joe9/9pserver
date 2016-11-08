@@ -210,19 +210,9 @@ fileOpen
   -> FSItem (Context u)
   -> (Context u)
   -> IO (Either NineError (Qid, IOUnit), (Context u))
-fileOpen fid mode fidState me c
-  | mode == Read && isJust (fidQueue fidState) -- OREAD and Q already exists
-   = return (Right ((stQid . dStat . fDetails) me, iounit), c)
-  | mode == Read -- OREAD
-   = do
-    readQ <- newTQueueIO
-    return
-      ( Right ((stQid . dStat . fDetails) me, iounit)
-      , c
-        { cFids =
-            HashMap.insert fid (fidState {fidQueue = Just readQ}) (cFids c)
-        })
-  | otherwise = return (Right ((stQid . dStat . fDetails) me, iounit), c)
+-- fileOpen fid mode fidState me c =
+fileOpen _ _ _ me c =
+  return (Right ((stQid . dStat . fDetails) me, iounit), c)
   where
     iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
 
@@ -265,9 +255,12 @@ fileRead
   -> FSItem (Context u)
   -> (Context u)
   -> IO (ReadResponse, (Context u))
-fileRead _ _ _ (FidState Nothing _ _) _ c =
-  return ((ReadError . showNineError . OtherError) "No Queue to read from", c)
-fileRead _ _ count (FidState (Just q) _ _) _ c = return (ReadQ q count, c)
+fileRead _ offset count (FidState _ (Just r) _) _ c
+  = return ((ReadResponse . BS.take (fromIntegral count) . BS.drop (fromIntegral offset)) r, c)
+fileRead _ _ count (FidState (Just q) _ _) _ c =
+  return (ReadQ q count, c)
+fileRead _ _ _ _ _ c =
+  return ((ReadError . showNineError . OtherError) "fileRead Not implemented", c)
 
 -- TODO check for permissions, iounit details, etc
 dirRead
