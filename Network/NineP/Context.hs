@@ -346,7 +346,7 @@ addFSItem f c =
           Nothing ->
             maybe
               ((FSItemId . IxSet.size . cFSItems) c)
-              fsItemId
+              ((\(FSItemId i) -> FSItemId (i + 1)) . fsItemId)
               ((headMay . IxSet.toDescList FSItemId . cFSItems) c)
           Just item -> fsItemId item
       fsItem = f vacantItemId
