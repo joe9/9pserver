@@ -231,7 +231,7 @@ data Details s = Details
   , dWriteStat :: Fid -> Stat -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
   , dWrite :: Fid -> Offset -> ByteString -> FSItem s -> s -> IO (Either NineError Count, s)
-  , dClunk :: Fid -> FSItem s -> s -> (Maybe NineError, s)
+  , dClunk :: Fid -> FidState -> FSItem s -> s -> IO (Maybe NineError, s)
   , dFlush :: FSItem s -> s -> s
   , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItem s -> s -> (Either NineError Qid, s)
   , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)

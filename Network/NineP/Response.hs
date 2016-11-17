@@ -114,12 +114,19 @@ attach (Tattach fid afid uname aname) c =
 --   where
 --     uc = c {cFids = HashMap.insert fid 0 (cFids c)}
 -- TODO The actual file is not removed on the server unless the fid had been opened with ORCLOSE.
-clunk :: Tclunk -> (Context u) -> (Either Rerror Rclunk, (Context u))
+-- TODO write an empty message to clean up any asyncs waiting for data
+clunk :: Tclunk -> (Context u) -> IO (Either Rerror Rclunk, (Context u))
 clunk (Tclunk fid) c =
-  case getFSItemOfFid fid c of
-    Nothing -> (rerror (OtherError "clunk: invalid fid"), c)
-    Just d -> runMaybeFunction (((dClunk . fDetails) d) fid d c) Rclunk
+  case HashMap.lookup fid (cFids c) of
+    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
+    Just fds ->
+      case getFSItemOfFid fid c of
+        Nothing -> return (rerror EInval, c)
+        Just fsItem -> do
+          fmap (flip runMaybeFunction Rclunk)
+               (((dClunk . fDetails) fsItem) fid fds fsItem c)
 
+-- TODO bug clean up asyncs, if any
 flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
 flush (Tflush _) c = (Right Rflush, c)
 

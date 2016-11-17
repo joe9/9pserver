@@ -136,11 +136,11 @@ testStat01 =
         })
 
 testClunk01 :: Assertion
-testClunk01 =
+testClunk01 = do
   let attachresult = attach (Tattach 0 0xffffffff "root" "") testContext
       statresult = stat (Tstat 0) (snd attachresult)
-      result = clunk (Tclunk 0) (snd statresult)
-  in fst result @?= Right Rclunk
+  result <- clunk (Tclunk 0) (snd statresult)
+  fst result @?= Right Rclunk
 
 testWalk01 :: Assertion
 testWalk01 =
@@ -208,7 +208,7 @@ testClunk02 = do
     [ (0, FidState Nothing Nothing (FidId 0))
     , (1, FidState Nothing Nothing (FidId 1))
     ]
-  let result = clunk (Tclunk 1) (snd openresult)
+  result <- clunk (Tclunk 1) (snd openresult)
   fst result @?= Right Rclunk
   (HashMap.toList . cFids . snd) result @?=
     [(0, FidState Nothing Nothing (FidId 0))]

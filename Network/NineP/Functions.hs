@@ -152,10 +152,13 @@ vacate me =
 -- fileWrite fid offset bs (FidState _ i c)
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 fdClunk :: Fid
+        -> FidState
         -> FSItem (Context u)
         -> (Context u)
-        -> (Maybe NineError, (Context u))
-fdClunk fid _ c = (Nothing, c {cFids = HashMap.delete fid (cFids c)})
+        -> IO (Maybe NineError, (Context u))
+fdClunk fid (FidState Nothing _ _) _ c = return (Nothing, c {cFids = HashMap.delete fid (cFids c)})
+fdClunk fid (FidState (Just q) _ _) _ c =
+  atomically (writeTQueue q "") >> return (Nothing, c {cFids = HashMap.delete fid (cFids c)})
 
 -- fileFlush :: s -> s
 -- fileFlush context = context
