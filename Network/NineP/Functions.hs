@@ -157,19 +157,21 @@ fdClunk :: Fid
         -> IO (Maybe NineError, (Context u))
 fdClunk fid _ c =
   mapM_ (cancel . bAsync) ((cBlockedReads c) @= (FidId fid)) >>
-  return (Nothing
-         , c {cFids = HashMap.delete fid (cFids c)
-    , cFSItemFids =
-        foldl'
-          (flip IxSet.delete)
-          (cFSItemFids c)
-          ((cFSItemFids c) @= (FidId fid))
-    , cBlockedReads =
-        foldl'
-          (flip IxSet.delete)
-          (cBlockedReads c)
-          ((cBlockedReads c) @= (FidId fid))
-             })
+  return
+    ( Nothing
+    , c
+      { cFids = HashMap.delete fid (cFids c)
+      , cFSItemFids =
+          foldl'
+            (flip IxSet.delete)
+            (cFSItemFids c)
+            ((cFSItemFids c) @= (FidId fid))
+      , cBlockedReads =
+          foldl'
+            (flip IxSet.delete)
+            (cBlockedReads c)
+            ((cBlockedReads c) @= (FidId fid))
+      })
 
 -- fileFlush :: s -> s
 -- fileFlush context = context
@@ -225,8 +227,7 @@ fileOpen
   -> (Context u)
   -> IO (Either NineError (Qid, IOUnit), (Context u))
 -- fileOpen fid mode fidState me c =
-fileOpen _ _ _ me c =
-  return (Right ((stQid . dStat . fDetails) me, iounit), c)
+fileOpen _ _ _ me c = return (Right ((stQid . dStat . fDetails) me, iounit), c)
   where
     iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message
 
@@ -269,12 +270,16 @@ fileRead
   -> FSItem (Context u)
   -> (Context u)
   -> IO (ReadResponse, (Context u))
-fileRead _ offset count (FidState _ (Just r) _) _ c
-  = return ((ReadResponse . BS.take (fromIntegral count) . BS.drop (fromIntegral offset)) r, c)
-fileRead _ _ count (FidState (Just q) _ i) _ c =
-  return (ReadQ q count i, c)
+fileRead _ offset count (FidState _ (Just r) _) _ c =
+  return
+    ( (ReadResponse .
+       BS.take (fromIntegral count) . BS.drop (fromIntegral offset))
+        r
+    , c)
+fileRead _ _ count (FidState (Just q) _ i) _ c = return (ReadQ q count i, c)
 fileRead _ _ _ _ _ c =
-  return ((ReadError . showNineError . OtherError) "fileRead Not implemented", c)
+  return
+    ((ReadError . showNineError . OtherError) "fileRead Not implemented", c)
 
 -- TODO check for permissions, iounit details, etc
 dirRead
@@ -326,7 +331,8 @@ fileRemove :: Fid
 fileRemove fid me c = do
   clunkResult <- fdClunk fid me c
   case clunkResult of
-    (Nothing, uc) -> return (Nothing , c { cFSItems = IxSet.delete me (cFSItems c)})
+    (Nothing, uc) ->
+      return (Nothing, c {cFSItems = IxSet.delete me (cFSItems c)})
     _ -> return clunkResult
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)

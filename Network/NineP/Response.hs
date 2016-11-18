@@ -117,11 +117,12 @@ attach (Tattach fid afid uname aname) c =
 -- TODO write an empty message to clean up any asyncs waiting for data
 clunk :: Tclunk -> (Context u) -> IO (Either Rerror Rclunk, (Context u))
 clunk (Tclunk fid) c =
-      case getFSItemOfFid fid c of
-        Nothing -> return (rerror EInval, c)
-        Just fsItem -> do
-          fmap (flip runMaybeFunction Rclunk)
-               (((dClunk . fDetails) fsItem) fid fsItem c)
+  case getFSItemOfFid fid c of
+    Nothing -> return (rerror EInval, c)
+    Just fsItem -> do
+      fmap
+        (flip runMaybeFunction Rclunk)
+        (((dClunk . fDetails) fsItem) fid fsItem c)
 
 -- TODO bug clean up asyncs, if any
 flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
@@ -132,7 +133,8 @@ remove :: Tremove -> (Context u) -> IO (Either Rerror Rremove, (Context u))
 remove (Tremove fid) c =
   case getFSItemOfFid fid c of
     Nothing -> return (rerror (OtherError "create: invalid fid"), c)
-    Just d -> fmap (flip runMaybeFunction Rremove) (((dRemove . fDetails) d) fid d c)
+    Just d ->
+      fmap (flip runMaybeFunction Rremove) (((dRemove . fDetails) d) fid d c)
 
 -- ropen (Msg _ t (Topen fid mode)) = do
 --     f <- lookup fid
@@ -201,21 +203,34 @@ write (Twrite fid offset dat) c =
 
 checkBlockedReads :: Context u -> IO ([(Tag, Rerror)], Context u)
 checkBlockedReads c =
-  foldlM checkBlockedRead ([],c {cBlockedReads = IxSet.empty}) (cBlockedReads c)
+  foldlM
+    checkBlockedRead
+    ([], c {cBlockedReads = IxSet.empty})
+    (cBlockedReads c)
 
-checkBlockedRead :: ([(Tag, Rerror)], Context u) -> BlockedRead -> IO ([(Tag, Rerror)], Context u)
+checkBlockedRead :: ([(Tag, Rerror)], Context u)
+                 -> BlockedRead
+                 -> IO ([(Tag, Rerror)], Context u)
 checkBlockedRead (rs, c) blockedRead = do
   v <- poll (bAsync blockedRead)
   case v of
-    Nothing -> -- still pending
-      return (rs, c{cBlockedReads = IxSet.updateIx (bTag blockedRead) blockedRead (cBlockedReads c)})
+    Nothing -- still pending
+     ->
+      return
+        ( rs
+        , c
+          { cBlockedReads =
+              IxSet.updateIx (bTag blockedRead) blockedRead (cBlockedReads c)
+          })
     -- completed with an exception
     (Just (Left e)) ->
       return
-           ((((unBlockedReadTag . bTag) blockedRead
-              , (Rerror . showNineError . OtherError . cs . show) e) : rs) ,c)
+        ( (( (unBlockedReadTag . bTag) blockedRead
+           , (Rerror . showNineError . OtherError . cs . show) e) :
+           rs)
+        , c)
     -- completed successfully
-    (Just (Right _)) -> return (rs,c)
+    (Just (Right _)) -> return (rs, c)
 
 stat :: Tstat -> (Context u) -> (Either Rerror Rstat, (Context u))
 stat (Tstat fid) c =

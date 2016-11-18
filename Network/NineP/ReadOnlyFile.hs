@@ -65,8 +65,7 @@ readOnlyFileOpen
   -> (Context u)
   -> IO (Either NineError (Qid, IOUnit), (Context u))
 readOnlyFileOpen _ mode _ me c
-  | mode == Read
-   = return (Right ((stQid . dStat . fDetails) me, iounit), c)
+  | mode == Read = return (Right ((stQid . dStat . fDetails) me, iounit), c)
   | otherwise = return (Left (OtherError "Read Only File"), c)
   where
     iounit = fromIntegral ((cMaxMessageSize c) - 23) -- maximum size of each message

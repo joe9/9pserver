@@ -62,7 +62,7 @@ tests =
 testContext :: Context ()
 testContext =
   (defaultContext ())
-    {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
+  {cFSItems = testFSItemsList, cFSItemIdCounter = IxSet.size testFSItemsList}
 
 testFSItemsList :: IxSet FSItemIxs (FSItem (Context u))
 testFSItemsList =
