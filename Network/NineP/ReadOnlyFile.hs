@@ -37,7 +37,6 @@ readOnlyFileDetails name index =
   , dVersion = 0
   }
 
- -- if it is not a directory, it is a file
 readOnlyFileStat :: FSItemId -> Stat
 readOnlyFileStat (FSItemId index) =
   Stat
