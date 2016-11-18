@@ -325,7 +325,7 @@ testWrite01 = do
   fst inopenresult @?= Right (Ropen (Qid [AppendOnly] 0 1) 8169)
   let writeContents = "testing write" :: BS.ByteString
   writeresult <- write (Twrite 2 0 writeContents) (snd inopenresult)
-  (ReadQ readQ count, _) <-
+  (ReadQ readQ count (FidId 1), _) <-
     read (Tread 1 0 (fromIntegral (BS.length writeContents))) (snd writeresult)
   (fromIntegral (BS.length writeContents)) @?= count
   contents <- atomically (readTQueue readQ)
