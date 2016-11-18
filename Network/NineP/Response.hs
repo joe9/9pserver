@@ -117,25 +117,22 @@ attach (Tattach fid afid uname aname) c =
 -- TODO write an empty message to clean up any asyncs waiting for data
 clunk :: Tclunk -> (Context u) -> IO (Either Rerror Rclunk, (Context u))
 clunk (Tclunk fid) c =
-  case HashMap.lookup fid (cFids c) of
-    Nothing -> return (rerror (ENoFile "fid cannot be found"), c)
-    Just fds ->
       case getFSItemOfFid fid c of
         Nothing -> return (rerror EInval, c)
         Just fsItem -> do
           fmap (flip runMaybeFunction Rclunk)
-               (((dClunk . fDetails) fsItem) fid fds fsItem c)
+               (((dClunk . fDetails) fsItem) fid fsItem c)
 
 -- TODO bug clean up asyncs, if any
 flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
 flush (Tflush _) c = (Right Rflush, c)
 
 --  TODO This request will fail if the client does not have write permission in the parent directory.
-remove :: Tremove -> (Context u) -> (Either Rerror Rremove, (Context u))
+remove :: Tremove -> (Context u) -> IO (Either Rerror Rremove, (Context u))
 remove (Tremove fid) c =
   case getFSItemOfFid fid c of
-    Nothing -> (rerror (OtherError "create: invalid fid"), c)
-    Just d -> runMaybeFunction (((dRemove . fDetails) d) fid d c) Rremove
+    Nothing -> return (rerror (OtherError "create: invalid fid"), c)
+    Just d -> fmap (flip runMaybeFunction Rremove) (((dRemove . fDetails) d) fid d c)
 
 -- ropen (Msg _ t (Topen fid mode)) = do
 --     f <- lookup fid
@@ -202,28 +199,23 @@ write (Twrite fid offset dat) c =
       result <- ((dWrite . fDetails) fsItem) fid offset dat fsItem c
       return (runEitherFunction result Rwrite)
 
-checkBlockedReads :: (Context u) -> IO ([(Tag, Rerror)], (Context u))
-checkBlockedReads c = do
-  checkeds <- (mapM checkBlockedRead . cBlockedReads) c
-  let (blockedReads, responses) = partitionEithers checkeds
-  return (catMaybes responses, c {cBlockedReads = blockedReads})
+checkBlockedReads :: Context u -> IO ([(Tag, Rerror)], Context u)
+checkBlockedReads c =
+  foldlM checkBlockedRead ([],c {cBlockedReads = IxSet.empty}) (cBlockedReads c)
 
-checkBlockedRead :: BlockedRead -> IO (Either BlockedRead (Maybe (Tag, Rerror)))
-checkBlockedRead blockedRead = do
+checkBlockedRead :: ([(Tag, Rerror)], Context u) -> BlockedRead -> IO ([(Tag, Rerror)], Context u)
+checkBlockedRead (rs, c) blockedRead = do
   v <- poll (bAsync blockedRead)
-  case v
-       -- still pending
-        of
-    Nothing -> return (Left blockedRead)
+  case v of
+    Nothing -> -- still pending
+      return (rs, c{cBlockedReads = IxSet.updateIx (bTag blockedRead) blockedRead (cBlockedReads c)})
     -- completed with an exception
     (Just (Left e)) ->
       return
-        (Right
-           (Just
-              ( bTag blockedRead
-              , (Rerror . showNineError . OtherError . cs . show) e)))
+           ((((unBlockedReadTag . bTag) blockedRead
+              , (Rerror . showNineError . OtherError . cs . show) e) : rs) ,c)
     -- completed successfully
-    (Just (Right _)) -> return (Right Nothing)
+    (Just (Right _)) -> return (rs,c)
 
 stat :: Tstat -> (Context u) -> (Either Rerror Rstat, (Context u))
 stat (Tstat fid) c =

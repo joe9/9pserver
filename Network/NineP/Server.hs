@@ -15,6 +15,7 @@ import           Control.Exception.Safe        hiding (handle)
 import           Data.ByteString               (ByteString)
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Char8         as BSC
+import           Data.IxSet.Typed              as IxSet
 import           Data.Serialize                hiding (flush)
 import           Data.String.Conversions
 import qualified GHC.Base                      as Base
@@ -89,7 +90,6 @@ processMessage
 processMessage MT.Tversion = process version
 processMessage MT.Tattach  = process attach
 processMessage MT.Tflush   = process flush
-processMessage MT.Tremove  = process remove
 processMessage MT.Tcreate  = process create
 processMessage MT.Tstat    = process stat
 processMessage MT.Twstat   = process wstat
@@ -140,12 +140,15 @@ processRead writeq tag msg c =
         ReadResponse m ->
           atomically (writeTQueue writeq (toNinePFormat (Rread m) tag)) >>
           return nc
-        ReadQ readq count -> do
+        ReadQ readq count fidid -> do
           asyncValue <- async (readFromQ readq count tag writeq)
           return
             (nc
              { cBlockedReads =
-                 (BlockedRead tag count asyncValue) : (cBlockedReads nc)
+                 IxSet.updateIx
+                   (BlockedReadTag tag)
+                   (BlockedRead (BlockedReadTag tag) count fidid asyncValue)
+                   (cBlockedReads nc)
              })
 
 readFromQ :: TQueue ByteString -> Count -> Tag -> TQueue ByteString -> IO Tag
@@ -174,11 +177,11 @@ processIO f tag msg c =
     Left e -> return (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
     Right d -> do
       eitherResult <- f (traceShowId d) c
---       case traceShow (fst eitherResult) eitherResult of
       case eitherResult of
         (Left e, cn)  -> return (toNinePFormat e tag, cn)
         (Right m, cn) -> return (toNinePFormat m tag, cn)
 
+--       case traceShow (fst eitherResult) eitherResult of
 -- validate if size < maximum size (Nothing about it in intro(5))??
 getMessageHeaders :: Get (TransmitMessageType, Tag)
 getMessageHeaders = do
@@ -226,6 +229,10 @@ eventLoop handle sendQ context = do
                 furtherProcessing handle sendQ updatedContext
             Right ((MT.Tclunk, tag), msgData) -> do
               (response, updatedContext) <- processIO clunk tag msgData context
+              atomically (writeTQueue sendQ response) >>
+                furtherProcessing handle sendQ updatedContext
+            Right ((MT.Tremove, tag), msgData) -> do
+              (response, updatedContext) <- processIO remove tag msgData context
               atomically (writeTQueue sendQ response) >>
                 furtherProcessing handle sendQ updatedContext
             Right ((msgType, tag), msgData) ->

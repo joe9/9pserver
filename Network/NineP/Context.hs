@@ -164,7 +164,7 @@ data Context u = Context
     --        for Qid.Path
   , cFSItems         :: IxSet FSItemIxs (FSItem (Context u))
   , cMaxMessageSize  :: Int
-  , cBlockedReads    :: [BlockedRead]
+  , cBlockedReads    :: IxSet BlockedReadIxs BlockedRead
   , cUserState       :: u
   , cFSItemFids      :: IxSet FSItemFidIxs FSItemFid
   , cFSItemIdCounter :: Int
@@ -206,18 +206,36 @@ data ReadResponse
   | ReadResponse ByteString
   | ReadQ (TQueue ByteString)
           Count -- Offset Count (Async Tag)
+          FidId -- to cancel these if the Fid is clunked
   deriving (Eq)
 
 instance Show ReadResponse where
-  show (ReadError bs)    = "ReadError " ++ show bs
+  show (ReadError bs) = "ReadError " ++ show bs
   show (ReadResponse bs) = "ReadResponse " ++ show bs
-  show (ReadQ _ count)   = "ReadQ <TQueue> " ++ show count
+  show (ReadQ _ count fidId) =
+    "ReadQ <TQueue> " ++ show count ++ " " ++ show fidId
+
+newtype BlockedReadTag = BlockedReadTag
+  { unBlockedReadTag :: Tag
+  } deriving (Eq, Show, Ord)
 
 data BlockedRead = BlockedRead
-  { bTag   :: !Tag
+  { bTag   :: !BlockedReadTag -- primary key
   , bCount :: !Word32
+  , bFid   :: !FidId
   , bAsync :: Async Tag
   }
+
+instance Eq BlockedRead where
+  a == b = (bTag a) == (bTag b)
+
+instance Ord BlockedRead where
+  compare a b = compare (bTag a) (bTag b)
+
+type BlockedReadIxs = '[BlockedReadTag, FidId]
+
+instance Indexable BlockedReadIxs BlockedRead where
+  indices = ixList (ixFun (\i -> [bTag i])) (ixFun (\i -> [bFid i]))
 
 type IOUnit = Word32
 
@@ -231,11 +249,11 @@ data Details s = Details
   , dWriteStat :: Fid -> Stat -> FSItem s -> s -> (Maybe NineError, s)
   , dStat :: Stat
   , dWrite :: Fid -> Offset -> ByteString -> FSItem s -> s -> IO (Either NineError Count, s)
-  , dClunk :: Fid -> FidState -> FSItem s -> s -> IO (Maybe NineError, s)
+  , dClunk :: Fid -> FSItem s -> s -> IO (Maybe NineError, s)
   , dFlush :: FSItem s -> s -> s
   , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItem s -> s -> (Either NineError Qid, s)
   , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
-  , dRemove :: Fid -> FSItem s -> s -> (Maybe NineError, s)
+  , dRemove :: Fid -> FSItem s -> s -> IO (Maybe NineError, s)
   , dVersion :: Word32
   }
 
@@ -278,7 +296,7 @@ stModeToQType fsItem =
 
 defaultContext :: u -> Context u
 defaultContext userState =
-  Context HashMap.empty IxSet.empty 8192 [] userState IxSet.empty 0
+  Context HashMap.empty IxSet.empty 8192 IxSet.empty userState IxSet.empty 0
 
 showFSItems :: Context u -> IO ()
 showFSItems = putStrLn . groom . cFSItems

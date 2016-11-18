@@ -103,8 +103,8 @@ dirDetails name index =
 dirRemove :: Fid
           -> FSItem (Context u)
           -> (Context u)
-          -> (Maybe NineError, (Context u))
-dirRemove _ _ c = (Just (OtherError "Not implemented"), c)
+          -> IO (Maybe NineError, (Context u))
+dirRemove _ _ c = return (Just (OtherError "Not implemented"), c)
 
 dirWrite
   :: Fid
@@ -152,13 +152,24 @@ vacate me =
 -- fileWrite fid offset bs (FidState _ i c)
 -- fileWrite _ _ _ context = (Left (ENotImplemented "fileOpen"), context)
 fdClunk :: Fid
-        -> FidState
         -> FSItem (Context u)
         -> (Context u)
         -> IO (Maybe NineError, (Context u))
-fdClunk fid (FidState Nothing _ _) _ c = return (Nothing, c {cFids = HashMap.delete fid (cFids c)})
-fdClunk fid (FidState (Just q) _ _) _ c =
-  atomically (writeTQueue q "") >> return (Nothing, c {cFids = HashMap.delete fid (cFids c)})
+fdClunk fid _ c =
+  mapM_ (cancel . bAsync) ((cBlockedReads c) @= (FidId fid)) >>
+  return (Nothing
+         , c {cFids = HashMap.delete fid (cFids c)
+    , cFSItemFids =
+        foldl'
+          (flip IxSet.delete)
+          (cFSItemFids c)
+          ((cFSItemFids c) @= (FidId fid))
+    , cBlockedReads =
+        foldl'
+          (flip IxSet.delete)
+          (cBlockedReads c)
+          ((cBlockedReads c) @= (FidId fid))
+             })
 
 -- fileFlush :: s -> s
 -- fileFlush context = context
@@ -260,8 +271,8 @@ fileRead
   -> IO (ReadResponse, (Context u))
 fileRead _ offset count (FidState _ (Just r) _) _ c
   = return ((ReadResponse . BS.take (fromIntegral count) . BS.drop (fromIntegral offset)) r, c)
-fileRead _ _ count (FidState (Just q) _ _) _ c =
-  return (ReadQ q count, c)
+fileRead _ _ count (FidState (Just q) _ i) _ c =
+  return (ReadQ q count i, c)
 fileRead _ _ _ _ _ c =
   return ((ReadError . showNineError . OtherError) "fileRead Not implemented", c)
 
@@ -311,18 +322,12 @@ belongsToDir fp fsItem
 fileRemove :: Fid
            -> FSItem (Context u)
            -> (Context u)
-           -> (Maybe NineError, (Context u))
-fileRemove fid me c =
-  ( Nothing
-  , c
-    { cFids = HashMap.delete fid (cFids c)
-    , cFSItemFids =
-        foldl'
-          (flip IxSet.delete)
-          (cFSItemFids c)
-          ((cFSItemFids c) @= (fsItemId me))
-    , cFSItems = IxSet.delete me (cFSItems c)
-    })
+           -> IO (Maybe NineError, (Context u))
+fileRemove fid me c = do
+  clunkResult <- fdClunk fid me c
+  case clunkResult of
+    (Nothing, uc) -> return (Nothing , c { cFSItems = IxSet.delete me (cFSItems c)})
+    _ -> return clunkResult
 
 readStat :: Fid -> FSItem s -> s -> (Either NineError Stat, s)
 readStat _ me context = ((Right . dStat . fDetails) me, context)

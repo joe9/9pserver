@@ -50,8 +50,8 @@ readOnlyPipeRead
   -> IO (ReadResponse, (Context u))
 readOnlyPipeRead _ _ _ (FidState Nothing _ _) _ c =
   return ((ReadError . showNineError . OtherError) "No Queue to read from", c)
-readOnlyPipeRead _ _ count (FidState (Just q) _ _) _ c =
-  return (ReadQ q count, c)
+readOnlyPipeRead _ _ count (FidState (Just q) _ fidId) _ c =
+  return (ReadQ q count fidId, c)
 
 -- if it is not a directory, it is a file
 readOnlyPipeStat :: FSItemId -> Stat

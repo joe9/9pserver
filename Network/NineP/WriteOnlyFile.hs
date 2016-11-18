@@ -94,8 +94,8 @@ writeOnlyFileRead _ _ _ _ _ c =
 writeOnlyFileRemove :: Fid
                     -> FSItem (Context u)
                     -> (Context u)
-                    -> (Maybe NineError, (Context u))
-writeOnlyFileRemove _ _ c = (Just (OtherError "Write Only File"), c)
+                    -> IO (Maybe NineError, (Context u))
+writeOnlyFileRemove _ _ c = return (Just (OtherError "Write Only File"), c)
 
 writeOnlyFileWrite
   :: Fid

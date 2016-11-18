@@ -82,5 +82,5 @@ readOnlyFileWrite _ _ _ _ c = return (Left (OtherError "Read Only File"), c)
 readOnlyFileRemove :: Fid
                    -> FSItem (Context u)
                    -> (Context u)
-                   -> (Maybe NineError, (Context u))
-readOnlyFileRemove _ _ c = (Just (OtherError "Read Only File"), c)
+                   -> IO (Maybe NineError, (Context u))
+readOnlyFileRemove _ _ c = return (Just (OtherError "Read Only File"), c)
