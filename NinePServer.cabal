@@ -39,11 +39,13 @@ Library
               , network-simple
               , NineP
               , stm
-              , groom
+              , GenericPretty
               , posix-paths
               , unix
               , containers
               , ixset-typed
+              , wl-pprint-text
+              , groom
   Exposed-modules:
                   Network.NineP
                   Network.NineP.Error
@@ -84,7 +86,7 @@ test-suite NinePServer-test
                      , safe-exceptions
                      , network-simple
                      , stm
-                     , groom
+                     , GenericPretty
                      , posix-paths
                      , unix
                      , NinePServer

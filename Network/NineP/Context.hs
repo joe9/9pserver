@@ -1,5 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
@@ -13,12 +15,15 @@ import qualified Data.HashMap.Strict              as HashMap
 import           Data.IxSet.Typed                 as IxSet hiding
                                                             (flatten)
 import           Data.List
+import qualified Data.Text                        as T
 import           Data.Tree
 import qualified GHC.Show                         as Show
 import           Protolude                        hiding (Proxy, put)
 import           System.Posix.ByteString.FilePath
 import           System.Posix.FilePath
 import           Text.Groom
+import           Text.PrettyPrint.GenericPretty
+import qualified Text.PrettyPrint.Leijen.Text     as PP
 
 import           Data.NineP
 import           Data.NineP.OpenMode
@@ -101,7 +106,7 @@ import Network.NineP.Error
 data Occupied
   = Occupied
   | Vacant
-  deriving (Eq, Show, Ord, Typeable)
+  deriving (Eq, Show, Generic, Pretty, Ord, Typeable)
 
 data FSItem s = FSItem
   { fOccupied     :: Occupied
@@ -112,11 +117,11 @@ data FSItem s = FSItem
 
 newtype AbsolutePath = AbsolutePath
   { unAbsolutePath :: RawFilePath
-  } deriving (Eq, Show, Ord)
+  } deriving (Eq, Show, Generic, Pretty, Ord)
 
 newtype FSItemId =
   FSItemId Int
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Generic, Pretty, Ord)
 
 type FSItemIxs = '[FSItemId, AbsolutePath, Occupied]
 
@@ -135,7 +140,7 @@ instance Indexable FSItemIxs (FSItem s) where
 --   type for that.
 newtype FidId =
   FidId Fid
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Generic, Pretty, Ord)
 
 data FidState = FidState
   { fidQueue    :: Maybe (TQueue ByteString)
@@ -146,7 +151,7 @@ data FidState = FidState
 data FSItemFid = FSItemFid
   { ffFSItemId :: FSItemId
   , ffFid      :: FidId
-  } deriving (Eq, Show, Ord)
+  } deriving (Eq, Show, Generic, Pretty, Ord)
 
 type FSItemFidIxs = '[FSItemId, FidId]
 
@@ -179,6 +184,9 @@ instance Show FidState where
   show (FidState Nothing r i) = "FidState Nothing " ++ show r ++ " " ++ show i
   show (FidState (Just _) r i) = "FidState <TQueue> " ++ show r ++ " " ++ show i
 
+instance Pretty FidState where
+  pretty = PP.text . show
+
 instance Show (FSItem s) where
   show f =
     unwords
@@ -187,6 +195,16 @@ instance Show (FSItem s) where
       , (groom . fOccupied) f
       , (groom . dVersion . fDetails) f
       , (groom . dStat . fDetails) f
+      ]
+
+instance Pretty (FSItem s) where
+  pretty f =
+    PP.list
+      [ (pretty . fsItemId) f
+      , (pretty . fAbsoluteName) f
+      , (pretty . fOccupied) f
+      , (pretty . dVersion . fDetails) f
+      , (pretty . dStat . fDetails) f
       ]
 
 instance Eq (FSItem s) where
@@ -217,7 +235,7 @@ instance Show ReadResponse where
 
 newtype BlockedReadTag = BlockedReadTag
   { unBlockedReadTag :: Tag
-  } deriving (Eq, Show, Ord)
+  } deriving (Eq, Show, Generic, Pretty, Ord)
 
 data BlockedRead = BlockedRead
   { bTag   :: !BlockedReadTag -- primary key
@@ -299,9 +317,9 @@ defaultContext userState =
   Context HashMap.empty IxSet.empty 8192 IxSet.empty userState IxSet.empty 0
 
 showFSItems :: Context u -> IO ()
-showFSItems = putStrLn . groom . cFSItems
+showFSItems = putStrLn . displayPretty . cFSItems
 
--- *Main Protolude Data.Tree Text.Groom > putStrLn . groom . V.toList . V.indexed . treeTofsitemsvector $ sampleTree
+-- *Main Protolude Data.Tree Text.DisplayPretty > putStrLn . displayPretty . V.toList . V.indexed . treeTofsitemsvector $ sampleTree
 treeToFSItems
   :: Tree ((RawFilePath -> FSItemId -> FSItem (Context u)), RawFilePath)
   -> IxSet FSItemIxs (FSItem (Context u))
