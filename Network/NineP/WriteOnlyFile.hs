@@ -37,7 +37,6 @@ writeOnlyFileDetails name index =
   , dWriteStat = writeStat
   , dWrite = writeOnlyFileWrite
   , dClunk = fdClunk
-  , dFlush = fdFlush
   , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = writeOnlyFileRemove

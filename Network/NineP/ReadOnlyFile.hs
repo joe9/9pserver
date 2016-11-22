@@ -30,7 +30,6 @@ readOnlyFileDetails name index =
   , dWriteStat = writeStat
   , dWrite = readOnlyFileWrite
   , dClunk = fdClunk
-  , dFlush = fdFlush
   , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = readOnlyFileRemove

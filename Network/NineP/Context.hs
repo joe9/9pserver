@@ -268,7 +268,6 @@ data Details s = Details
   , dStat :: Stat
   , dWrite :: Fid -> Offset -> ByteString -> FSItem s -> s -> IO (Either NineError Count, s)
   , dClunk :: Fid -> FSItem s -> s -> IO (Maybe NineError, s)
-  , dFlush :: FSItem s -> s -> s
   , dAttach :: Fid -> AFid -> UserName -> AccessName -> FSItem s -> s -> (Either NineError Qid, s)
   , dCreate :: Fid -> ByteString -> Permissions -> OpenMode -> FSItem s -> s -> (Either NineError (Qid, IOUnit), s)
   , dRemove :: Fid -> FSItem s -> s -> IO (Maybe NineError, s)

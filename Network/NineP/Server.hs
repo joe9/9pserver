@@ -89,7 +89,6 @@ processMessage
   -> (ByteString, (Context u))
 processMessage MT.Tversion = process version
 processMessage MT.Tattach  = process attach
-processMessage MT.Tflush   = process flush
 processMessage MT.Tcreate  = process create
 processMessage MT.Tstat    = process stat
 processMessage MT.Twstat   = process wstat
@@ -233,6 +232,10 @@ eventLoop handle sendQ context = do
                 furtherProcessing handle sendQ updatedContext
             Right ((MT.Tremove, tag), msgData) -> do
               (response, updatedContext) <- processIO remove tag msgData context
+              atomically (writeTQueue sendQ response) >>
+                furtherProcessing handle sendQ updatedContext
+            Right ((MT.Tflush, tag), msgData) -> do
+              (response, updatedContext) <- processIO flush tag msgData context
               atomically (writeTQueue sendQ response) >>
                 furtherProcessing handle sendQ updatedContext
             Right ((msgType, tag), msgData) ->

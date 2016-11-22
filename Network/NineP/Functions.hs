@@ -76,7 +76,6 @@ sampleFileDetails name index =
   , dWriteStat = writeStat
   , dWrite = undefined -- fileWrite
   , dClunk = fdClunk
-  , dFlush = fdFlush
   , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = fileRemove
@@ -93,7 +92,6 @@ dirDetails name index =
   , dWriteStat = writeStat
   , dWrite = dirWrite
   , dClunk = fdClunk
-  , dFlush = fdFlush
   , dAttach = dirAttach
   , dCreate = fdCreate
   , dRemove = dirRemove
@@ -115,9 +113,6 @@ dirWrite
   -> IO (Either NineError Count, (Context u))
 dirWrite _ _ _ _ c = return (Left (OtherError "Not implemented"), c)
 
-fdFlush :: FSItem (Context u) -> (Context u) -> (Context u)
-fdFlush _ c = c
-
 -- NineError message
 -- TODO change all the undefineds to return the old context and a
 noneDetails :: Details (Context u)
@@ -131,7 +126,6 @@ noneDetails =
   , dWriteStat = undefined
   , dWrite = undefined
   , dClunk = undefined
-  , dFlush = undefined
   , dAttach = undefined
   , dCreate = undefined
   , dRemove = undefined
@@ -173,8 +167,6 @@ fdClunk fid _ c =
             ((cBlockedReads c) @= (FidId fid))
       })
 
--- fileFlush :: s -> s
--- fileFlush context = context
 dirAttach
   :: Fid
   -> AFid

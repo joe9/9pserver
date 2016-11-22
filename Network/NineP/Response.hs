@@ -124,9 +124,18 @@ clunk (Tclunk fid) c =
         (flip runMaybeFunction Rclunk)
         (((dClunk . fDetails) fsItem) fid fsItem c)
 
--- TODO bug clean up asyncs, if any
-flush :: Tflush -> (Context u) -> (Either Rerror Rflush, (Context u))
-flush (Tflush _) c = (Right Rflush, c)
+flush :: Tflush -> (Context u) -> IO (Either Rerror Rflush, (Context u))
+flush (Tflush tag) c = do
+  mapM_ (cancel . bAsync) ((cBlockedReads c) @= (BlockedReadTag tag))
+  return
+    ( Right Rflush
+    , c
+      { cBlockedReads =
+          foldl'
+            (flip IxSet.delete)
+            (cBlockedReads c)
+            ((cBlockedReads c) @= (BlockedReadTag tag))
+      })
 
 --  TODO This request will fail if the client does not have write permission in the parent directory.
 remove :: Tremove -> (Context u) -> IO (Either Rerror Rremove, (Context u))

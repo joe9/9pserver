@@ -38,7 +38,6 @@ writeOnlyPipeDetails name index =
   , dWriteStat = writeStat
   , dWrite = sampleWriteToOutReadOpenFids
   , dClunk = fdClunk
-  , dFlush = fdFlush
   , dAttach = fileAttach
   , dCreate = fdCreate
   , dRemove = writeOnlyFileRemove
