@@ -49,7 +49,7 @@ run9PServer context hostPreference serviceName
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering
   serve hostPreference serviceName $ \(connectionSocket, remoteAddr) -> do
-    putStrLn ("TCP connection established from " ++ show remoteAddr)
+    putText ("TCP connection established from " <> show remoteAddr)
     clientConnection connectionSocket (traceShowId remoteAddr) context
 
 -- Now you may use connectionSocket as you please within this scope,
@@ -243,7 +243,7 @@ eventLoop handle sendQ context = do
                     processMessage msgType tag msgData context
                   -- for some reason, the "cs response" is not
                   --    showing the correct value
-                  --  putStrLn ("msgType: "
+                  --  putText ("msgType: "
                   --     ++ cs (MT.showTransmitMessageType msgType)
                   --     ++ ", Tag: " ++ show tag
                   --     ++ ", response: " ++ cs response) >>

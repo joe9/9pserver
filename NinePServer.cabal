@@ -78,7 +78,6 @@ test-suite NinePServer-test
                      , network
                      , vector
                      , text
-                     , text-show
                      , protolude
                      , string-conversions
                      , cereal
