@@ -24,7 +24,7 @@ main = do
          "127.0.0.1"
          "5961"
          (\(connectionSocket, remoteAddr) -> do
-            putStrLn ("Connection established to " ++ show remoteAddr)
+            putText ("Connection established to " <> show remoteAddr)
             defaultMain
               (testGroup
                  "Tests"
