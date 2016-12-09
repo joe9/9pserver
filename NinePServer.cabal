@@ -31,7 +31,6 @@ Library
               , network
               , vector
               , text
-              , text-show
               , protolude
               , string-conversions
               , cereal
