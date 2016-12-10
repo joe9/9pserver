@@ -17,7 +17,7 @@ import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Char8         as BSC
 import           Data.IxSet.Typed              as IxSet
 import           Data.Serialize                hiding (flush)
-import           Data.String.Conversions
+import           Data.String.Conversions       (cs)
 import qualified GHC.Base                      as Base
 import qualified GHC.Show                      as Show
 import           Network.Simple.TCP
