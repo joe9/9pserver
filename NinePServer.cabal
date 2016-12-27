@@ -38,7 +38,7 @@ Library
               , network-simple
               , NineP
               , stm
-              , GenericPretty
+              , text-generic-pretty
               , posix-paths
               , unix
               , containers
@@ -84,7 +84,7 @@ test-suite NinePServer-test
                      , safe-exceptions
                      , network-simple
                      , stm
-                     , GenericPretty
+                     , text-generic-pretty
                      , posix-paths
                      , unix
                      , NinePServer
