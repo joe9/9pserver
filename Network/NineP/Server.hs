@@ -50,7 +50,7 @@ run9PServer context hostPreference serviceName
   hSetBuffering stderr LineBuffering
   serve hostPreference serviceName $ \(connectionSocket, remoteAddr) -> do
     putText ("TCP connection established from " <> show remoteAddr)
-    clientConnection connectionSocket (traceShowId remoteAddr) context
+    clientConnection connectionSocket (identity remoteAddr) context
 
 -- Now you may use connectionSocket as you please within this scope,
 -- possibly using recv and send to interact with the remote end.
@@ -106,12 +106,12 @@ process
   -> (ByteString, (Context u))
 process f tag msg c =
   case runGet get msg of
-    Left e -> (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
+    Left e -> (toNinePFormat (identity (Rerror (cs e))) tag, c)
     Right d ->
-      let result = f (traceShowId d) c
+      let result = f (identity d) c
       in case result of
-           (Left e, cn)  -> (toNinePFormat (traceShowId e) tag, cn)
-           (Right m, cn) -> (toNinePFormat (traceShowId m) tag, cn)
+           (Left e, cn)  -> (toNinePFormat (identity e) tag, cn)
+           (Right m, cn) -> (toNinePFormat (identity m) tag, cn)
 
 processBlockedReads :: (Context u) -> IO (ByteString, (Context u))
 processBlockedReads c = do
@@ -127,12 +127,12 @@ processRead writeq tag msg c =
   case runGet get msg of
     Left e ->
       (atomically .
-       writeTQueue writeq . flip toNinePFormat tag . traceShowId . Rerror . cs)
+       writeTQueue writeq . flip toNinePFormat tag . identity . Rerror . cs)
         e >>
       return c
     Right d -> do
-      (readResponse, nc) <- read (traceShowId d) c
-      case traceShowId readResponse of
+      (readResponse, nc) <- read (identity d) c
+      case identity readResponse of
         ReadError e ->
           atomically (writeTQueue writeq (toNinePFormat (Rerror e) tag)) >>
           return nc
@@ -159,7 +159,7 @@ readFromQ readq count tag writeq = do
         when (not (BS.null forNextTime)) (unGetTQueue readq forNextTime)
         writeTQueue
           writeq
-          (toNinePFormat (traceShowId (Rread sendContents)) tag)
+          (toNinePFormat (identity (Rread sendContents)) tag)
         return tag)
 
 -- TODO Not bothering with max string size.
@@ -173,9 +173,9 @@ processIO
   -> IO (ByteString, (Context u))
 processIO f tag msg c =
   case runGet get msg of
-    Left e -> return (toNinePFormat (traceShowId (Rerror (cs e))) tag, c)
+    Left e -> return (toNinePFormat (identity (Rerror (cs e))) tag, c)
     Right d -> do
-      eitherResult <- f (traceShowId d) c
+      eitherResult <- f (identity d) c
       case eitherResult of
         (Left e, cn)  -> return (toNinePFormat e tag, cn)
         (Right m, cn) -> return (toNinePFormat m tag, cn)
@@ -202,7 +202,7 @@ eventLoop handle sendQ context = do
   case runGet getWord32le rawSize of
     Left e ->
       atomically
-        (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) rawSize)) >>
+        (writeTQueue sendQ (toErrorMessage (identity (cs e)) rawSize)) >>
       furtherProcessing handle sendQ context
     Right wsize -> do
       let size = fromIntegral wsize
@@ -213,7 +213,7 @@ eventLoop handle sendQ context = do
           case runGetState getMessageHeaders message 0 of
             Left e ->
               atomically
-                (writeTQueue sendQ (toErrorMessage (traceShowId (cs e)) message)) >>
+                (writeTQueue sendQ (toErrorMessage (identity (cs e)) message)) >>
               furtherProcessing handle sendQ context
             Right ((MT.Tread, tag), msgData) -> do
               updatedContext <- processRead sendQ tag msgData context
